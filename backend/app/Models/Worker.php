@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasCustomFields;
 use App\Models\Concerns\HasModuleRelations;
+use App\Models\Concerns\HasTenant;
 use App\Models\Concerns\SoftDeletesWithAudit;
 use App\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Worker extends Model
 {
-    use Auditable, HasCustomFields, HasFactory, HasModuleRelations;
+    use Auditable, HasCustomFields, HasFactory, HasModuleRelations, HasTenant;
     use SoftDeletesWithAudit;
 
     /** Supported compensation modes for per-worker pay. */
