@@ -90,11 +90,25 @@ class WorkerTenantIsolationTest extends TestCase
         $migration = require database_path('migrations/2026_10_11_120000_add_tenant_id_to_workers_table.php');
         $migration->down();
 
-        // A worker with an account in tenant B, and one with no account at all.
-        $withAccount = DB::table('workers')->insertGetId(['code' => 'W-ACC', 'name' => 'Has account', 'created_at' => now(), 'updated_at' => now()]);
-        $withoutAccount = DB::table('workers')->insertGetId(['code' => 'W-NONE', 'name' => 'No account', 'created_at' => now(), 'updated_at' => now()]);
+        $worker = fn (string $code) => DB::table('workers')->insertGetId(['code' => $code, 'name' => $code, 'created_at' => now(), 'updated_at' => now()]);
+        $activity = fn (int $workerId, Tenant $tenant) => EmployeeActivity::factory()->create(['worker_id' => $workerId, 'tenant_id' => $tenant->id]);
+
+        // An account in B outweighs a schedule entry in A.
+        $withAccount = $worker('W-ACC');
         $account = User::factory()->create(['tenant_id' => $this->tenantB->id, 'worker_id' => $withAccount]);
-        $scheduled = EmployeeActivity::factory()->create(['worker_id' => $withAccount]);
+        $scheduled = $activity($withAccount, $this->tenantA);
+
+        // No account: the schedule decides…
+        $onlySchedule = $worker('W-SCHED');
+        $activity($onlySchedule, $this->tenantB);
+
+        // …unless it points at two tenants.
+        $split = $worker('W-SPLIT');
+        $activity($split, $this->tenantA);
+        $activity($split, $this->tenantB);
+
+        // Nothing at all: the oldest tenant.
+        $untied = $worker('W-NONE');
 
         $migration->up();
 
@@ -102,8 +116,10 @@ class WorkerTenantIsolationTest extends TestCase
         $oldest = DB::table('tenants')->orderBy('id')->value('id');
 
         $this->assertSame($this->tenantB->id, $tenantOf($withAccount));
-        $this->assertSame($oldest, $tenantOf($withoutAccount));
-        $this->assertSame(0, DB::table('workers')->whereNull('tenant_id')->count());
+        $this->assertSame($this->tenantB->id, $tenantOf($onlySchedule));
+        $this->assertNull($tenantOf($split));
+        $this->assertSame($oldest, $tenantOf($untied));
+        $this->assertSame([$split], DB::table('workers')->whereNull('tenant_id')->pluck('id')->all());
 
         // Adding the column must not set off anything that points at workers.
         $this->assertSame($withAccount, DB::table('users')->where('id', $account->id)->value('worker_id'));

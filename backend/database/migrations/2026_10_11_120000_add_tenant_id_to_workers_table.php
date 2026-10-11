@@ -9,9 +9,18 @@ use Illuminate\Support\Facades\Schema;
  * Workers belong to a tenant, like users, lines and work orders already do.
  *
  * Until now the workers table had no tenant at all, so every tenant's users saw
- * every tenant's workers. Existing rows are backfilled: a worker linked to a
- * user account takes that account's tenant; any other worker goes to the oldest
- * tenant — on a single-tenant installation, the only one.
+ * every tenant's workers. Existing rows are backfilled from what already ties a
+ * worker to a tenant, strongest first:
+ *
+ *   1. the worker's user accounts;
+ *   2. their schedule (employee_activities) and pallet moves (pallet_movements);
+ *   3. nothing at all — the oldest tenant; on a single-tenant installation, the
+ *      only one.
+ *
+ * A worker whose records within one level point at different tenants is left
+ * without a tenant rather than handed to one of them: no tenant-bound user sees
+ * them, so nothing leaks to the wrong tenant (a user without a tenant still
+ * does, as before).
  */
 return new class extends Migration
 {
@@ -34,21 +43,75 @@ return new class extends Migration
             $table->index('tenant_id');
         });
 
-        // 2) From the worker's user account. Portable subquery form so it runs
-        // on both Postgres and SQLite (tests).
-        DB::table('workers')
-            ->whereNull('tenant_id')
-            ->update([
-                'tenant_id' => DB::raw('(SELECT MIN(users.tenant_id) FROM users WHERE users.worker_id = workers.id)'),
-            ]);
-
-        // 3) Everyone else to the oldest tenant. Left NULL they would vanish
-        // for every user who has a tenant, which is every user once one exists.
+        // 2) Workers the existing records tie to a single tenant.
         $oldest = DB::table('tenants')->orderBy('id')->value('id');
-
-        if ($oldest !== null) {
-            DB::table('workers')->whereNull('tenant_id')->update(['tenant_id' => $oldest]);
+        if ($oldest === null) {
+            return; // no tenants, nothing to scope by
         }
+
+        $decided = [];
+        $conflicting = [];
+
+        foreach ([$this->tenantsOf(['users']), $this->tenantsOf(['employee_activities', 'pallet_movements'])] as $level) {
+            foreach ($level as $workerId => $tenantIds) {
+                if (isset($decided[$workerId]) || isset($conflicting[$workerId])) {
+                    continue;
+                }
+
+                if (count($tenantIds) === 1) {
+                    $decided[$workerId] = $tenantIds[0];
+                } else {
+                    $conflicting[$workerId] = true;
+                }
+            }
+        }
+
+        $byTenant = [];
+        foreach ($decided as $workerId => $tenantId) {
+            $byTenant[$tenantId][] = $workerId;
+        }
+
+        foreach ($byTenant as $tenantId => $workerIds) {
+            foreach (array_chunk($workerIds, 500) as $chunk) {
+                DB::table('workers')->whereIn('id', $chunk)->update(['tenant_id' => $tenantId]);
+            }
+        }
+
+        // 3) Workers nothing ties to a tenant. Left NULL they would vanish for
+        // every user who has a tenant, which is every user once one exists.
+        $undecided = DB::table('workers')->whereNull('tenant_id')->pluck('id')
+            ->reject(fn ($id) => isset($conflicting[$id]))
+            ->all();
+
+        foreach (array_chunk($undecided, 500) as $chunk) {
+            DB::table('workers')->whereIn('id', $chunk)->update(['tenant_id' => $oldest]);
+        }
+    }
+
+    /**
+     * The distinct tenants each worker's rows in the given tables belong to.
+     *
+     * @param  list<string>  $tables  each with worker_id and tenant_id
+     * @return array<int, list<int>> worker id => tenant ids
+     */
+    private function tenantsOf(array $tables): array
+    {
+        $tenants = [];
+
+        foreach ($tables as $table) {
+            DB::table($table)
+                ->whereNotNull('worker_id')
+                ->whereNotNull('tenant_id')
+                ->distinct()
+                ->orderBy('worker_id')
+                ->select(['worker_id', 'tenant_id'])
+                ->get()
+                ->each(function ($row) use (&$tenants) {
+                    $tenants[(int) $row->worker_id][(int) $row->tenant_id] = true;
+                });
+        }
+
+        return array_map(fn (array $set) => array_keys($set), $tenants);
     }
 
     public function down(): void
