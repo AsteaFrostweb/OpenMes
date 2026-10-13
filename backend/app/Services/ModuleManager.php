@@ -372,6 +372,8 @@ class ModuleManager
      */
     public function loadEnabled(\Illuminate\Foundation\Application $app): void
     {
+        $guards = [];
+
         foreach ($this->enabledNames() as $name) {
             $manifestPath = "{$this->modulesPath}/{$name}/module.json";
             if (! is_file($manifestPath)) {
@@ -386,15 +388,15 @@ class ModuleManager
                 // provider's boot() is thrown while Laravel boots every provider,
                 // long after this method returned, so the caller's try/catch
                 // cannot see it — and one bad module would 502 the whole app.
-                //
-                // Registered with force, because the container deduplicates by
-                // class name: without it the second module's guard would be
-                // mistaken for the first one's and silently skipped.
-                $app->register(
-                    new \App\Support\ModuleProviderGuard($app, new $provider($app), $name),
-                    force: true,
-                );
+                $guards[] = new \App\Support\ModuleProviderGuard($app, new $provider($app), $name);
             }
+        }
+
+        // One provider for all of them: Laravel keeps one provider per class,
+        // so a guard registered per module would leave only the last one to
+        // be booted (see ModuleProviders).
+        if ($guards !== []) {
+            $app->register(new \App\Support\ModuleProviders($app, $guards), force: true);
         }
     }
 

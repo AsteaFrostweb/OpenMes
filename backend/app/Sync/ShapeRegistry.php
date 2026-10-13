@@ -205,9 +205,11 @@ class ShapeRegistry
             'table' => 'view_templates',
             'columns' => ['id', 'name', 'description', 'created_at', 'updated_at'],
         ],
+        // `criteria` is a JSON column — raw string in the snapshot, see the
+        // note on custom_field_definitions. The plans list counts it per row.
         'inspection_plans' => [
             'table' => 'inspection_plans',
-            'columns' => ['id', 'name', 'description', 'material_id', 'material_type_id', 'is_active', 'version', 'published_at', 'root_id', 'created_at', 'updated_at'],
+            'columns' => ['id', 'name', 'description', 'material_id', 'material_type_id', 'criteria', 'is_active', 'version', 'published_at', 'root_id', 'created_at', 'updated_at'],
         ],
         'label_templates' => [
             'table' => 'label_templates',

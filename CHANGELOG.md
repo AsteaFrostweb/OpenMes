@@ -7,6 +7,110 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-13
+
+### Added
+
+- **The bill of materials can be read one step at a time.** A template's component list
+  and its routing graph now drive the same filter: clicking a step on the graph shows only
+  what that step consumes, and each step carries a badge with how many components it takes.
+  The filter lives in the URL (`?step_id=`), so a link to one step's components survives a
+  reload and can be sent to somebody else. Each component also states when it is consumed —
+  at the start of the step, during it, or at the end.
+- **The ionCube Loader ships in the Docker image.** A module can be installed into a running
+  OpenMES from the admin panel, and a module distributed as encoded PHP cannot run without
+  the loader. Without it in the stock image, installing one would mean swapping the whole
+  installation for a different image first, which defeats the point of installing through the
+  panel at all. The loader is inert until something asks it to run an encoded file — a couple
+  of megabytes and no behaviour change for anybody not running such a module.
+- **Vietnamese translations for the mobile app**, and the strings that were still hardcoded in
+  the production screens are now translatable.
+- **A module can now add to the sign-in page.** A module with something to say before
+  anybody is signed in — which installation this is, a link to single sign-on or to a
+  forgotten password — had one way to say it: replace the page, form and all, and then
+  follow every change core made to signing in. Display hooks `display.auth.login.before`
+  and `display.auth.login.after` are rendered above and below the form, which stays core's
+  own. They are resolved without a user, since there is none yet, and with no module
+  listening they are `{}` and render nothing.
+- **A module can now say something on every admin screen.** The operator panel has had a
+  layout hook since the workstation seams went in; the admin layout had none, so a module with
+  news for an administrator — a licence about to lapse, a maintenance window — could only put
+  it on its own pages, which is where nobody is when it matters. Display hook
+  `display.admin.layout` is resolved with the signed-in user and rendered above the page
+  wherever `AppLayout` is used. With no module listening it is `{}` and renders nothing.
+
+### Fixed
+
+- **Every enabled module boots, not just the last one.** Laravel keys its provider list by
+  class name, and each module was registered as its own `ModuleProviderGuard` — the same class
+  every time — so each guard overwrote the previous one's entry. `register()` ran for all of
+  them and `boot()` only for the last module enabled: with two or more modules installed the
+  others had no routes, no menus and no migrations, and nothing was logged because nothing
+  failed. Modules now register through a single provider that holds every module's guard and
+  runs both phases for each in turn, each still inside its own guard so a module that throws
+  costs only itself.
+- **Workers are scoped to their tenant.** Workers carried no tenant, so on a multi-tenant
+  installation every tenant's users could see, open and change every other tenant's workers —
+  contact and pay data included. `Worker` now behaves like users, lines and work orders:
+  queries are scoped to the signed-in user's tenant, a new worker is stamped with its
+  creator's, and the live-sync snapshot scopes the collection on its own. The migration
+  backfills existing workers from the strongest evidence first — the tenant of their user
+  account, then of their schedule entries and pallet moves, and only then the oldest tenant.
+  A worker whose own records point at different tenants is left without one rather than
+  assigned to a guess.
+- **MQTT credentials and TLS settings reach the broker.** `ConnectionSettings` in the MQTT
+  client is immutable — every setter returns a modified copy — and the results were being
+  discarded, so the username, password and TLS options configured on a device were never
+  sent. Against a broker with anonymous access disabled the listener was simply refused, with
+  nothing on screen suggesting the credentials had not left the building.
+- **Machine counts arriving over MQTT reach the browser live.** The listener was pinned to the
+  log broadcaster, so the deltas it produced went to a file instead of to Reverb and a counter
+  reading only appeared after a manual reload. The same was true of the Modbus poller and the
+  queue worker, which set no broadcaster at all and fell back to a default with no host
+  configured. Every process that writes rows now broadcasts them.
+- **Inspection plans show how many criteria they hold.** The column was missing from the
+  collection's shape, so the list counted from a snapshot that never carried it and every
+  plan read "Criteria: 0" however many were stored.
+- **An unhandled error is written to the log again.** The exception handler counts faults for
+  telemetry in a `report` callback that ended in `return false`, which Laravel reads as "handled,
+  skip the default logger". Since that callback was added, a request that failed with a 500
+  left nothing in `laravel.log` — the System Logs screen and anyone reading the file saw a
+  system with nothing wrong. The callback now returns nothing and logging is as it was.
+- **Warnings and notices sent with a redirect are now shown.** The server shares four kinds
+  of flash message and the admin layout rendered two of them, so a redirect explained with
+  `->with('warning', …)` or `->with('info', …)` landed the user on a page they had not asked
+  for with no word why. All four are rendered now, warnings and errors announced as alerts.
+- **A work order can be raised for a product whose bill of materials holds a material with
+  no type.** Material types became optional, and the snapshot taken when an order is raised
+  still read the type's code unconditionally — one typeless material in the BOM and every order
+  for that product failed with a server error. The snapshot now records no type for it.
+- **The installer no longer runs over an installation that is in use.** What shuts the wizard
+  is a marker file in `storage/`, which is lost with the volume (`down -v`, a move to another
+  host). Its steps need no session, so with the marker gone the first visitor could rewrite the
+  environment file, run `migrate:fresh` or create themselves an administrator. The three steps
+  that write now check for existing accounts first; finding any, they put the marker back and
+  send the visitor to sign in, as a preset install joining an existing database already did.
+- **A page from a compiled-in module now gets its own styles.** Pages under
+  `modules/<Name>/resources/js/Pages` are compiled into the bundle when they are present at
+  build time, but Tailwind never scanned them: it takes what to scan from `.gitignore`, which
+  lists `modules/`. Such a page rendered with every utility class core happens to use and
+  none of its own. The build now writes one `@source` per module that ships pages
+  (`openmesModuleSources()` in `@openmes/module`), because an ignored directory is only
+  scanned when it is named outright — a glob across it is skipped all the same.
+- **WebP uploads work in the Docker image.** The image built GD without WebP, so re-encoding
+  an uploaded `image/webp` failed with an undefined `imagewebp()`. The test suite did not
+  catch it because it runs on the CI runner's PHP, not in the image; the build now fails
+  outright if GD is missing a format the application accepts.
+- **`tenants:prune` is scheduled only in demo mode.** It was written for the public demo,
+  where an account is meant to disappear, and ran every minute on every installation. Nothing
+  outside the demo sets a tenant's `expires_at`, so it found nothing — but a tenant given an
+  expiry by hand would have been deleted, with everything cascading from it, within a minute.
+  The command can still be run by hand.
+
+### Changed
+
+- Operator line selection: an operator assigned to a single line goes straight to it (keeping the bench already picked on that line) instead of a picker with one card, and the "Switch line" / "Change line" buttons are hidden since they would only land back on the same line. The bench is still chosen from the queue's workstation filter.
+
 ## [0.25.0] - 2026-09-29
 
 ### Added
