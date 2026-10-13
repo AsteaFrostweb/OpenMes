@@ -503,6 +503,10 @@ Route::middleware('auth')->group(function () {
         Route::get('/schedule/check-updates', [SchedulePlannerController::class, 'checkUpdates'])->name('schedule.check-updates');
         Route::get('/schedule/changes', [SchedulePlannerController::class, 'changes'])->name('schedule.changes');
         Route::post('/schedule/changes/{change}/undo', [SchedulePlannerController::class, 'undoChange'])->name('schedule.changes.undo');
+        // Finite-capacity scheduling: sequence-dependent changeover rules.
+        Route::resource('schedule/changeover-rules', \App\Http\Controllers\Web\Admin\Schedule\ChangeoverRuleController::class)
+            ->except(['show'])
+            ->names('schedule.changeover-rules');
         Route::put('/schedule/{workOrder}', [SchedulePlannerController::class, 'updateOrder'])->name('schedule.update');
         Route::put('/schedule/{workOrder}/resize', [SchedulePlannerController::class, 'resizeOrder'])->name('schedule.resize');
         Route::post('/schedule/maintenance', [SchedulePlannerController::class, 'storeMaintenance'])->name('schedule.maintenance.store');

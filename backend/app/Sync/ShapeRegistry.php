@@ -40,6 +40,10 @@ class ShapeRegistry
             'table' => 'material_types',
             'columns' => ['id', 'code', 'name', 'created_at', 'updated_at'],
         ],
+        'changeover_rules' => [
+            'table' => 'changeover_rules',
+            'columns' => ['id', 'name', 'attribute', 'from_value', 'to_value', 'workstation_type_id', 'workstation_id', 'setup_minutes', 'is_active', 'created_at', 'updated_at'],
+        ],
         'downtime_reasons' => [
             'table' => 'downtime_reasons',
             'columns' => ['id', 'code', 'name', 'kind', 'is_active', 'created_at', 'updated_at'],
