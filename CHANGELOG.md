@@ -16,7 +16,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - shift calendars, scheduled maintenance and each line's new **planning efficiency (%)**
     (default 100, so existing capacity figures are unchanged);
   - work already planned and the order of the routing steps;
-  - material shortages (no material-ready date is ever invented);
+  - material shortages, netted across orders in scheduling order (no material-ready date is ever invented);
   - fixed workstations, and automatic selection from the equipment-class pool;
   - operator and skill counts, where a workforce provider tracks them;
   - optional sequence-dependent **changeover rules**.

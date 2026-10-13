@@ -103,16 +103,23 @@ class MaterialAllocationService
      * Which of these work orders current stock cannot cover, and by what.
      *
      * Every material across every snapshot is loaded in one pass, so a planner
-     * board can be flagged without a query per tile. Each order is measured on
-     * its own against on-hand — orders are not netted against each other, so
-     * this answers "could this one run today", not "can the whole week".
+     * board can be flagged without a query per tile. By default each order is
+     * measured on its own against on-hand — orders are not netted against each
+     * other, so this answers "could this one run today", not "can the whole week".
+     *
+     * With `$netted`, orders are taken in the given sequence and each covered
+     * order consumes the stock it needs before the next is measured — the
+     * question a scheduler asks ("can all of these run, in this order?"). An
+     * order that is short consumes nothing: it will not run, so it does not
+     * take stock from the orders behind it.
      *
      * @param  Collection<int, WorkOrder>  $workOrders
      * @return array<int, list<array<string, mixed>>> short lines keyed by work
      *                                                order id; covered orders are absent
      */
-    public function shortagesForWorkOrders(Collection $workOrders): array
+    public function shortagesForWorkOrders(Collection $workOrders, bool $netted = false): array
     {
+        $consumed = []; // material id => quantity taken by earlier covered orders (netted mode)
         $workOrders = $workOrders->reject(fn ($order) => in_array($order->status, ['DONE', 'CANCELLED', 'REJECTED'], true));
         $boms = [];
         $ids = [];
@@ -160,6 +167,7 @@ class MaterialAllocationService
             }
 
             $short = [];
+            $takes = [];
             $remainingCovered = ($covered->get($workOrder->id) ?? collect())->all();
 
             $requirements = [];
@@ -184,9 +192,11 @@ class MaterialAllocationService
                     continue;
                 }
                 // Keep the signed accounting balance; operators need usable stock.
-                $available = max(0, (float) ($material?->available_quantity ?? 0));
+                $available = max(0, (float) ($material?->available_quantity ?? 0) - ($material ? ($consumed[$material->id] ?? 0) : 0));
 
                 if ($material && $available >= $required) {
+                    $takes[$material->id] = ($takes[$material->id] ?? 0) + $required;
+
                     continue;
                 }
 
@@ -209,6 +219,10 @@ class MaterialAllocationService
 
             if ($short !== []) {
                 $out[$workOrder->id] = $short;
+            } elseif ($netted) {
+                foreach ($takes as $materialId => $qty) {
+                    $consumed[$materialId] = ($consumed[$materialId] ?? 0) + $qty;
+                }
             }
         }
 

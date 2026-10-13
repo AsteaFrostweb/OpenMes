@@ -22,8 +22,9 @@ use Illuminate\Support\Collection;
  *     the earliest due date, then id — so the same data always yields the same
  *     plan.
  *  2. An order whose material the stock cannot cover is not placed at all; its
- *     operations are reported material-constrained. No readiness date is
- *     invented — OpenMES does not know one.
+ *     operations are reported material-constrained. Stock is netted across the
+ *     run in scheduling order, so two orders cannot both count on the same
+ *     pallet. No readiness date is invented — OpenMES does not know one.
  *  3. Its operations follow routing order: each starts no earlier than its
  *     predecessor ends. A step that cannot be placed makes every later step
  *     infeasible by precedence.
@@ -95,7 +96,7 @@ class FiniteScheduler
         $this->bookCommitments($orders->pluck('id')->all(), $request);
 
         $shortages = $request->respectMaterial
-            ? $this->materials->shortagesForWorkOrders($orders)
+            ? $this->materials->shortagesForWorkOrders($orders, netted: true)
             : [];
 
         $operations = [];

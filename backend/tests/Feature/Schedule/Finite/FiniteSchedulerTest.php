@@ -224,6 +224,30 @@ class FiniteSchedulerTest extends TestCase
         $this->assertSame(ScheduledOperationStatus::Scheduled, $ignored['status']);
     }
 
+    public function test_stock_is_netted_across_orders_in_scheduling_order(): void
+    {
+        $line = $this->line();
+        $material = Material::factory()->create(['stock_quantity' => 15]);
+        $bom = [['material_id' => $material->id, 'material_code' => $material->code, 'quantity_per_unit' => 1, 'scrap_percentage' => 0]];
+        $first = $this->order($line, [['estimated_duration_minutes' => 60]], ['priority' => 9]);
+        $second = $this->order($line, [['estimated_duration_minutes' => 60]], ['priority' => 1]);
+        foreach ([$first, $second] as $order) {
+            $order->update(['process_snapshot' => array_merge($order->process_snapshot, ['bom' => $bom])]);
+        }
+
+        $result = $this->schedule();
+
+        // 15 in stock covers one order of 10, not both.
+        $this->assertSame(ScheduledOperationStatus::Scheduled, $this->opsFor($result, $first)[0]['status']);
+        $second = $this->opsFor($result, $second)[0];
+        $this->assertSame(ScheduledOperationStatus::InfeasibleMaterial, $second['status']);
+        $this->assertEquals(5, $second['reasons'][0]['shortages'][0]['missing_qty']);
+
+        // Each order on its own is still covered — the planner board's question.
+        $this->assertSame([], app(\App\Services\Material\MaterialAllocationService::class)
+            ->shortagesForWorkOrders(\App\Models\WorkOrder::whereKey([$first->id])->get()));
+    }
+
     public function test_operators_constrain_parallel_work(): void
     {
         $this->fakeWorkforce(operators: 2);

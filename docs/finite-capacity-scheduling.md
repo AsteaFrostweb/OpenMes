@@ -51,7 +51,10 @@ always gives the same plan.
 1. Orders are taken by priority (highest first), then priority score, then the
    earliest due date, then id.
 2. If stock cannot cover an order (the same shortage check the planner shows),
-   none of its operations are placed. No material-ready date is invented, so
+   none of its operations are placed. Stock is netted across the run in
+   scheduling order: an order that is covered takes its quantities before the
+   next one is checked, so two orders cannot both count on the same stock. An
+   order that is short takes nothing. No material-ready date is invented, so
    the order stays blocked by material.
 3. Steps follow routing order. Each step starts no earlier than the previous
    step ends. If a step cannot be placed, every later step of that order is
