@@ -56,6 +56,9 @@ export function Toolbar({ ctx, view, setView, lineFilter, setLineFilter, live, o
             <Link href="/admin/schedule/capacity" className="inline-flex items-center gap-2 rounded-om-sm border border-om-line px-3 py-2 text-xs font-semibold hover:bg-om-chip">
                 <Icon name="chart-no-axes-combined" size={14} />{__('Capacity')}
             </Link>
+            <Link href="/admin/schedule/auto" className="inline-flex items-center gap-2 rounded-om-sm border border-om-line px-3 py-2 text-xs font-semibold hover:bg-om-chip">
+                <Icon name="calendar-cog" size={14} />{__('Automatic scheduling')}
+            </Link>
             {hrEnabled && (
                 <Link href={`/admin/schedule/employees?date=${data.range.startDate}`} className="inline-flex items-center gap-2 rounded-om-sm border border-om-line px-3 py-2 text-xs font-semibold hover:bg-om-chip">
                     <Icon name="users" size={14} />{__('Employees')}

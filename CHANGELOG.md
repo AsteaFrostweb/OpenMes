@@ -9,6 +9,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Finite-capacity scheduling.** Until now the planner showed overload but left every
+  conflict for the planner to resolve by hand. *Schedule → Automatic scheduling* now
+  calculates a feasible plan step by step from each order's frozen routing. It takes into
+  account:
+  - shift calendars, scheduled maintenance and each line's new **planning efficiency (%)**
+    (default 100, so existing capacity figures are unchanged);
+  - work already planned and the order of the routing steps;
+  - material shortages (no material-ready date is ever invented);
+  - fixed workstations, and automatic selection from the equipment-class pool;
+  - operator and skill counts, where a workforce provider tracks them;
+  - optional sequence-dependent **changeover rules**.
+
+  The plan is a what-if draft. Nothing changes until a Supervisor or Admin applies it, and
+  applying goes through the planner's normal change log and undo. Every operation that cannot
+  be placed carries a machine-readable reason. The capacity view now shows calendar capacity
+  beside effective capacity. Drag & drop is unchanged. See
+  `docs/finite-capacity-scheduling.md`.
 - **A module can now add to the sign-in page.** A module with something to say before
   anybody is signed in — which installation this is, a link to single sign-on or to a
   forgotten password — had one way to say it: replace the page, form and all, and then

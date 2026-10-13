@@ -179,6 +179,8 @@ class AppServiceProvider extends ServiceProvider
         // WorkOrderCreated/Updated/Completed and StepStarted/Completed real on every
         // save path; BatchCreated is fired via Batch::$dispatchesEvents.
         \App\Models\WorkOrder::observe(\App\Observers\WorkOrderEventObserver::class);
+        // A hand-moved order's committed operation plan no longer describes it.
+        \App\Models\WorkOrder::observe(\App\Observers\ScheduledOperationInvalidationObserver::class);
         \App\Models\BatchStep::observe(\App\Observers\BatchStepEventObserver::class);
         // Extra segments live in their own table, so a segment-only planner edit
         // changes no work_orders column — watch them for the schedule hook too.

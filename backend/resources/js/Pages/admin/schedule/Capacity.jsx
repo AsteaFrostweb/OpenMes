@@ -161,6 +161,9 @@ export default function Capacity() {
                         <Link href="/admin/schedule" className="text-xs text-om-accent hover:underline">
                             {__('Planner')} &rarr;
                         </Link>
+                        <Link href="/admin/schedule/auto" className="text-xs text-om-accent hover:underline">
+                            {__('Automatic scheduling')} &rarr;
+                        </Link>
                     </div>
 
                     <div className="flex items-center gap-2">

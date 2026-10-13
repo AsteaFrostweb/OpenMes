@@ -105,20 +105,27 @@ class ScheduleSimulationService
 
             foreach ($operations as $workOrderId => $rows) {
                 $order = $orders->get($workOrderId);
+                $feasible = $rows->every(fn (ScheduledOperation $row) => $row->status->isScheduled());
 
-                ScheduledOperation::committed()->where('work_order_id', $workOrderId)->get()->each->delete();
+                // Move the order first: moving it drops its old committed
+                // operations (ScheduledOperationInvalidationObserver), and the
+                // new ones are committed right after.
+                if ($feasible) {
+                    $result = $this->planner->updateOrder($order, $this->placementFor($order, $rows), force: true);
+                    $warnings = [...$warnings, ...($result['warnings'] ?? [])];
+                }
+
+                ScheduledOperation::committed()->where('work_order_id', $workOrderId)->delete();
                 $committed = $rows->map(fn (ScheduledOperation $row) => ScheduledOperation::create(
                     ['schedule_simulation_id' => null] + $row->only(array_diff($row->getFillable(), ['schedule_simulation_id']))
                 ));
 
-                if (! $rows->every(fn (ScheduledOperation $row) => $row->status->isScheduled())) {
+                if (! $feasible) {
                     $skipped++;
 
                     continue;
                 }
 
-                $result = $this->planner->updateOrder($order, $this->placementFor($order, $rows), force: true);
-                $warnings = [...$warnings, ...($result['warnings'] ?? [])];
                 $warnings = [...$warnings, ...$this->assignStations($order->fresh('batches.steps'), $committed, $user)];
                 $applied++;
             }
