@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-09-29
+
 ### Added
 
 - **A module can now add to the sign-in page.** A module with something to say before
