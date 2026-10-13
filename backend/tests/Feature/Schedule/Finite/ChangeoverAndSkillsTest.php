@@ -103,6 +103,47 @@ class ChangeoverAndSkillsTest extends TestCase
         $this->assertSame(30, $op['setup_minutes']);
     }
 
+    public function test_a_gap_is_not_used_when_it_would_lengthen_the_next_jobs_changeover(): void
+    {
+        $line = $this->line();
+        $press = WorkstationType::factory()->create();
+        $saw = WorkstationType::factory()->create();
+        $this->station($line, $press);
+        $this->station($line, $saw);
+        // B job: saw 06–07, then press 07–07:30 — leaving the press idle 06–07.
+        $b = $this->order($line, [
+            ['estimated_duration_minutes' => 60, 'workstation_type_id' => $saw->id],
+            ['estimated_duration_minutes' => 30, 'workstation_type_id' => $press->id],
+        ], ['priority' => 9, 'product_type_id' => $this->family('B')->id]);
+        // A job of 30 min fits the press gap — but A → B needs a 30 min changeover
+        // the B job did not reserve, so it must go after B instead.
+        $a = $this->order($line, [['estimated_duration_minutes' => 30, 'workstation_type_id' => $press->id]], ['priority' => 1, 'product_type_id' => $this->family('A')->id]);
+        ChangeoverRule::factory()->create(['from_value' => 'A', 'to_value' => 'B', 'setup_minutes' => 30]);
+
+        $result = $this->schedule();
+
+        $this->assertEquals($this->at('2026-10-12 07:00'), $this->opsFor($result, $b)[1]['planned_start_at']);
+        $this->assertEquals($this->at('2026-10-12 07:30'), $this->opsFor($result, $a)[0]['planned_start_at']);
+    }
+
+    public function test_a_gap_is_used_when_the_next_jobs_changeover_does_not_grow(): void
+    {
+        $line = $this->line();
+        $press = WorkstationType::factory()->create();
+        $saw = WorkstationType::factory()->create();
+        $this->station($line, $press);
+        $this->station($line, $saw);
+        $b = $this->order($line, [
+            ['estimated_duration_minutes' => 60, 'workstation_type_id' => $saw->id],
+            ['estimated_duration_minutes' => 30, 'workstation_type_id' => $press->id],
+        ], ['priority' => 9, 'product_type_id' => $this->family('B')->id]);
+        $a = $this->order($line, [['estimated_duration_minutes' => 30, 'workstation_type_id' => $press->id]], ['priority' => 1, 'product_type_id' => $this->family('A')->id]);
+
+        $result = $this->schedule();
+
+        $this->assertEquals($this->at('2026-10-12 06:00'), $this->opsFor($result, $a)[0]['planned_start_at']);
+    }
+
     public function test_inactive_and_deleted_rules_are_ignored(): void
     {
         ChangeoverRule::factory()->create(['from_value' => 'A', 'to_value' => 'B', 'setup_minutes' => 99, 'is_active' => false]);

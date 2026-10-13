@@ -125,7 +125,9 @@ from highest to lowest:
 The winning rule's minutes replace the routing's standard setup for that
 transition. With no rule, the standard `setup_time_minutes` applies unchanged.
 The scheduler accounts for setup time, but it does not reorder jobs to
-minimise it.
+minimise it. An idle gap before a job that is already placed is used only if
+the new job does not lengthen that job's changeover beyond the setup it
+reserved.
 
 ## What-if workflow
 

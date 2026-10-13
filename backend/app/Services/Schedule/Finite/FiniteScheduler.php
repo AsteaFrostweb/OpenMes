@@ -374,6 +374,25 @@ class FiniteScheduler
                 continue;
             }
 
+            // Slotting in before a job already placed makes this operation its
+            // new predecessor. If that would lengthen the job's changeover
+            // beyond what it reserved, the job no longer fits where it is — so
+            // this gap is not usable.
+            $successor = $this->timeline->nextBooking($candidate['key'], $end);
+            if ($successor !== null && $successor['operation'] !== null) {
+                $resetup = (int) ($this->changeovers->setup(
+                    $successor['operation'],
+                    $demand->attributes,
+                    $candidate['workstation']?->id,
+                    $candidate['workstation']?->workstation_type_id ? (int) $candidate['workstation']->workstation_type_id : null,
+                )['minutes'] ?? 0);
+                if ($resetup > $successor['setup']) {
+                    $t = $successor['end'];
+
+                    continue;
+                }
+            }
+
             $labor = $this->laborShortfall($demand, $candidate['line_id'], $t, $end);
             if ($labor !== null) {
                 $failures[] = $labor;
@@ -458,7 +477,7 @@ class FiniteScheduler
      */
     private function book(WorkOrder $order, OperationDemand $demand, array $candidate, array $slot, int $sequence, ?array $note = null): array
     {
-        $this->timeline->book($candidate['key'], $slot['start'], $slot['end'], $demand->attributes);
+        $this->timeline->book($candidate['key'], $slot['start'], $slot['end'], $demand->attributes, $demand, (int) ($slot['setup'] ?? 0));
         $this->timeline->bookLabor($candidate['line_id'], $slot['start'], $slot['end'], $demand->requiredOperators, $demand->requiredSkillIds);
 
         $start = ResourceCalendar::toCarbon($slot['start']);

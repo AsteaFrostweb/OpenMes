@@ -15,7 +15,7 @@ namespace App\Services\Schedule\Finite;
  */
 class Timeline
 {
-    /** @var array<string, list<array{start: int, end: int, attributes: array<string, mixed>}>> */
+    /** @var array<string, list<array{start: int, end: int, attributes: array<string, mixed>, operation: ?OperationDemand, setup: int}>> */
     private array $busy = [];
 
     /** @var array<int, list<array{start: int, end: int, operators: int, skills: list<int>}>> */
@@ -23,13 +23,15 @@ class Timeline
 
     /**
      * @param  array<string, mixed>  $attributes  changeover dimensions of what runs there
+     * @param  OperationDemand|null  $operation  the operation booked by this run (null for committed load)
+     * @param  int  $setup  setup minutes the booking reserved
      */
-    public function book(string $key, int $start, int $end, array $attributes = []): void
+    public function book(string $key, int $start, int $end, array $attributes = [], ?OperationDemand $operation = null, int $setup = 0): void
     {
         if ($end <= $start) {
             return;
         }
-        $this->busy[$key][] = ['start' => $start, 'end' => $end, 'attributes' => $attributes];
+        $this->busy[$key][] = ['start' => $start, 'end' => $end, 'attributes' => $attributes, 'operation' => $operation, 'setup' => $setup];
         usort($this->busy[$key], fn ($a, $b) => $a['start'] <=> $b['start']);
     }
 
@@ -62,6 +64,23 @@ class Timeline
         }
 
         return $latest;
+    }
+
+    /**
+     * The first booking on the resource starting at or after $t — the job whose
+     * predecessor changes if something is inserted just before it.
+     *
+     * @return array{start: int, end: int, attributes: array<string, mixed>, operation: ?OperationDemand, setup: int}|null
+     */
+    public function nextBooking(string $key, int $t): ?array
+    {
+        foreach ($this->busy[$key] ?? [] as $slot) {
+            if ($slot['start'] >= $t) {
+                return $slot;
+            }
+        }
+
+        return null;
     }
 
     /**
