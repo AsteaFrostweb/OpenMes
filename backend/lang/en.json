@@ -6900,5 +6900,11 @@
     "Identity": "Identity",
     "Pricing": "Pricing",
     "Sequence": "Sequence",
-    "Credentials": "Credentials"
+    "Credentials": "Credentials",
+    "Planning efficiency (%)": "Planning efficiency (%)",
+    "Share of shift capacity (after scheduled maintenance) that planning may load. 100 = no derating. Not the same as OEE.": "Share of shift capacity (after scheduled maintenance) that planning may load. 100 = no derating. Not the same as OEE.",
+    "Load is measured against effective capacity: calendar capacity × planning efficiency.": "Load is measured against effective capacity: calendar capacity × planning efficiency.",
+    "Planning efficiency :pct%": "Planning efficiency :pct%",
+    "Calendar capacity before planning efficiency": "Calendar capacity before planning efficiency",
+    "Calendar :hours h": "Calendar :hours h"
 }

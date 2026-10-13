@@ -30,13 +30,28 @@ class Line extends Model
         'tenant_id',
         'view_template_id',
         'default_operator_view',
+        'planning_efficiency_pct',
     ];
 
     protected function casts(): array
     {
         return [
             'is_active' => 'boolean',
+            'planning_efficiency_pct' => 'float',
         ];
+    }
+
+    /**
+     * The share of calendar capacity planning may load, as a 0–1 factor.
+     *
+     * A missing or out-of-range value reads as 100 % rather than as zero
+     * capacity: an unset factor must leave the line's capacity untouched.
+     */
+    public function planningEfficiencyFactor(): float
+    {
+        $pct = (float) ($this->planning_efficiency_pct ?? 100);
+
+        return $pct > 0 && $pct <= 100 ? $pct / 100 : 1.0;
     }
 
     /** The stock location this line's consumption comes off. */

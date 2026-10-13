@@ -26,6 +26,11 @@ class StoreLineRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge(['is_active' => $this->boolean('is_active', true)]);
+
+        // A cleared efficiency field means "no derating", not "no capacity".
+        if ($this->exists('planning_efficiency_pct') && blank($this->input('planning_efficiency_pct'))) {
+            $this->merge(['planning_efficiency_pct' => 100]);
+        }
     }
 
     public function rules(): array
@@ -37,6 +42,8 @@ class StoreLineRequest extends FormRequest
             // The stock location this line's consumption comes off.
             'warehouse_id' => $this->stockLocationRules(),
             'is_active' => ['boolean'],
+            // Share of calendar capacity planning may load (100 = all of it).
+            'planning_efficiency_pct' => ['nullable', 'numeric', 'min:1', 'max:100'],
         ], $this->customFieldRules());
     }
 }

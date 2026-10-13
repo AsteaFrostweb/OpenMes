@@ -15,9 +15,10 @@ use Illuminate\Support\Collection;
  * available (from its shift calendar) versus how many hours of work are
  * planned against it, per time bucket (day or week).
  *
- * The *line* axis ({@see lineCapacity()}) supplies machine capacity: available
+ * The *line* axis ({@see lineCapacity()}) supplies machine capacity: calendar
  * hours from active shifts (line-specific plus global) minus scheduled
- * maintenance, planned hours from active work orders (minute-plans distributed
+ * maintenance, derated by the line's planning efficiency into the effective
+ * (available) hours that load is measured against; planned hours from active work orders (minute-plans distributed
  * across buckets, else a best-effort estimate lumped on the placement date;
  * unestimated orders counted separately rather than treated as zero load).
  *
@@ -27,6 +28,11 @@ use Illuminate\Support\Collection;
  * lines the crew staffs (explicit crew↔line assignment, else derived from
  * worker → workstation → line), weighted by each order's required operators.
  * See {@see crewCapacity()} for the demand model.
+ *
+ * Every cell carries both figures: `calendar_h` (what the shift calendar
+ * offers) and `available_h` (what planning may load after the efficiency
+ * factor). With the default 100 % they are equal, so existing installations
+ * see exactly the numbers they always did.
  */
 class CapacityService
 {
@@ -65,13 +71,16 @@ class CapacityService
             $lineOrders = $workOrders->flatMap(fn ($wo) => $this->projectionsForLine($wo, $line->id));
             $lineMaint = $maintenance->where('line_id', $line->id);
 
+            $factor = $line->planningEfficiencyFactor();
+
             $cells = [];
             foreach ($buckets as $bucket) {
-                $available = $this->lineAvailableMinutes($shiftIndex, $line->id, $bucket, $rangeStart, $rangeEnd)
-                    - $this->maintenanceMinutes($lineMaint, $bucket);
+                $calendar = max(0, $this->lineAvailableMinutes($shiftIndex, $line->id, $bucket, $rangeStart, $rangeEnd)
+                    - $this->maintenanceMinutes($lineMaint, $bucket));
 
                 $cells[$bucket['key']] = [
-                    'available_minutes' => max(0, $available),
+                    'calendar_minutes' => $calendar,
+                    'available_minutes' => $calendar * $factor,
                     'planned_minutes' => 0,
                     'unestimated_count' => 0,
                 ];
@@ -85,6 +94,7 @@ class CapacityService
                 'id' => $line->id,
                 'name' => $line->name,
                 'code' => $line->code,
+                'planning_efficiency_pct' => round($factor * 100, 2),
                 'cells' => $this->finalizeCells($cells),
             ];
         }
@@ -159,6 +169,7 @@ class CapacityService
 
         $resources = [];
         foreach ($crews as $crew) {
+            $factor = $this->crewEfficiencyFactor($crew);
             $cells = [];
             foreach ($buckets as $bucket) {
                 // Float through the split; round once when converting to hours.
@@ -168,8 +179,10 @@ class CapacityService
                     $planned += $lineMinutes / max(1, $crewsPerLine[$lineId] ?? 1);
                 }
 
+                $calendar = $this->crewAvailableMinutes($crew, $shiftIndex, $bucket, $rangeStart, $rangeEnd, $absentByDay);
                 $cells[$bucket['key']] = [
-                    'available_minutes' => $this->crewAvailableMinutes($crew, $shiftIndex, $bucket, $rangeStart, $rangeEnd, $absentByDay),
+                    'calendar_minutes' => $calendar,
+                    'available_minutes' => $calendar * $factor,
                     'planned_minutes' => $planned,
                     'unestimated_count' => 0,
                 ];
@@ -179,6 +192,7 @@ class CapacityService
                 'id' => $crew->id,
                 'name' => $crew->name,
                 'code' => $crew->code,
+                'planning_efficiency_pct' => round($factor * 100, 2),
                 'cells' => $this->finalizeCells($cells),
             ];
         }
@@ -195,7 +209,7 @@ class CapacityService
                     $minutes += $perBucket[$bucket['key']] ?? 0;
                 }
             }
-            $unassigned[$bucket['key']] = ['available_minutes' => 0, 'planned_minutes' => $minutes, 'unestimated_count' => 0];
+            $unassigned[$bucket['key']] = ['calendar_minutes' => 0, 'available_minutes' => 0, 'planned_minutes' => $minutes, 'unestimated_count' => 0];
             $hasUnassigned = $hasUnassigned || $minutes > 0;
         }
         if ($hasUnassigned) {
@@ -203,6 +217,7 @@ class CapacityService
                 'id' => 0,
                 'name' => __('Unassigned'),
                 'code' => null,
+                'planning_efficiency_pct' => 100.0,
                 'cells' => $this->finalizeCells($unassigned),
             ];
         }
@@ -478,14 +493,32 @@ class CapacityService
     }
 
     /**
+     * A crew's planning efficiency as a 0–1 factor.
+     *
+     * Crews live behind {@see WorkforceProvider}, so core cannot name a column
+     * on them; a provider that records a `planning_efficiency_pct` exposes it on
+     * the crew it returns. Absent or out of range reads as 100 %.
+     */
+    private function crewEfficiencyFactor(object $crew): float
+    {
+        $pct = (float) ($crew->planning_efficiency_pct ?? 100);
+
+        return $pct > 0 && $pct <= 100 ? $pct / 100 : 1.0;
+    }
+
+    /**
      * Convert raw minute tallies into the display shape (rounded hours +
      * integer load percentage; null percentage when there is no capacity).
+     *
+     * `available_*` is the effective capacity load is measured against;
+     * `calendar_*` is the undiminished shift-calendar figure beside it.
      */
     private function finalizeCells(array $cells): array
     {
         $out = [];
         foreach ($cells as $key => $cell) {
             $out[$key] = [
+                'calendar_h' => round(($cell['calendar_minutes'] ?? $cell['available_minutes']) / 60, 1),
                 'available_h' => round($cell['available_minutes'] / 60, 1),
                 'planned_h' => round($cell['planned_minutes'] / 60, 1),
                 'load_pct' => $cell['available_minutes'] > 0

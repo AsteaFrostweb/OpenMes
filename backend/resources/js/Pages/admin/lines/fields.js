@@ -12,6 +12,10 @@ export function lineFields(warehouses = []) {
                 ...warehouses.map((w) => ({ value: String(w.id), label: w.name })),
             ],
         },
+        {
+            name: 'planning_efficiency_pct', label: __('Planning efficiency (%)'), type: 'number', min: 1, max: 100, step: 0.5,
+            help: __('Share of shift capacity (after scheduled maintenance) that planning may load. 100 = no derating. Not the same as OEE.'),
+        },
         { name: 'description', label: __('Description'), type: 'textarea' },
         { name: 'is_active', label: __('Active'), type: 'checkbox' },
     ];
@@ -26,13 +30,14 @@ export function lineFields(warehouses = []) {
  */
 export function lineInitial(record) {
     if (!record) {
-        return { code: '', name: '', warehouse_id: '', description: '', is_active: true };
+        return { code: '', name: '', warehouse_id: '', planning_efficiency_pct: '100', description: '', is_active: true };
     }
 
     return {
         code: record.code ?? '',
         name: record.name ?? '',
         warehouse_id: record.warehouse_id != null ? String(record.warehouse_id) : '',
+        planning_efficiency_pct: record.planning_efficiency_pct != null ? String(Number(record.planning_efficiency_pct)) : '100',
         description: record.description ?? '',
         is_active: !!record.is_active,
         custom_fields: record.custom_fields ?? {},
