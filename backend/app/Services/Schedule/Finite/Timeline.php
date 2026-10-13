@@ -82,16 +82,18 @@ class Timeline
     }
 
     /**
-     * Operators already committed on a line during [start, end). Summed over
-     * every overlapping booking, which errs on the side of not overbooking
-     * people. With skills given, only bookings that need one of them count —
-     * those are the people competing for the same qualification.
+     * The most operators committed on a line at any one moment within
+     * [start, end) — the peak of concurrent demand, not the sum of every
+     * booking that touches the window: two jobs that run one after the other
+     * inside the window never need their crews at the same time. With skills
+     * given, only bookings needing one of them count — those are the people
+     * competing for the same qualification.
      *
      * @param  list<int>|null  $skills
      */
     public function laborInUse(int $lineKey, int $start, int $end, ?array $skills = null): int
     {
-        $total = 0;
+        $events = [];
         foreach ($this->labor[$lineKey] ?? [] as $slot) {
             if ($slot['start'] >= $end || $slot['end'] <= $start) {
                 continue;
@@ -99,10 +101,21 @@ class Timeline
             if ($skills !== null && array_intersect($skills, $slot['skills']) === []) {
                 continue;
             }
-            $total += $slot['operators'];
+            $events[] = [max($start, $slot['start']), $slot['operators']];
+            $events[] = [min($end, $slot['end']), -$slot['operators']];
         }
 
-        return $total;
+        // Releases sort before claims at the same minute: half-open intervals.
+        usort($events, fn ($a, $b) => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        $current = 0;
+        $peak = 0;
+        foreach ($events as [, $delta]) {
+            $current += $delta;
+            $peak = max($peak, $current);
+        }
+
+        return $peak;
     }
 
     /** The first booking end on the line after $t, to retry once people free up. */

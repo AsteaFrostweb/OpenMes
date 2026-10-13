@@ -265,6 +265,30 @@ class FiniteSchedulerTest extends TestCase
         $this->assertEquals($this->at('2026-10-12 06:00'), $this->opsFor($result, $first)[0]['planned_start_at']);
     }
 
+    public function test_sequential_jobs_do_not_add_up_their_crews(): void
+    {
+        // 3 operators, 3 stations. A1 and A2 need 2 people each, so they cannot
+        // overlap (4 > 3): A1 06–07, A2 07–08. A 2 h one-person job from 06:00
+        // overlaps both, but never more than 2 + 1 = 3 people at once — it must
+        // not be pushed back as if A1 and A2 needed 4 people simultaneously.
+        $this->fakeWorkforce(operators: 3);
+        $line = $this->line();
+        $type = WorkstationType::factory()->create();
+        foreach (range(1, 3) as $i) {
+            $this->station($line, $type);
+        }
+        $step = fn (int $minutes, int $people) => [['estimated_duration_minutes' => $minutes, 'workstation_type_id' => $type->id, 'required_operators' => $people]];
+        $a1 = $this->order($line, $step(60, 2), ['priority' => 9]);
+        $a2 = $this->order($line, $step(60, 2), ['priority' => 8]);
+        $long = $this->order($line, $step(120, 1), ['priority' => 1]);
+
+        $result = $this->schedule();
+
+        $this->assertEquals($this->at('2026-10-12 06:00'), $this->opsFor($result, $a1)[0]['planned_start_at']);
+        $this->assertEquals($this->at('2026-10-12 07:00'), $this->opsFor($result, $a2)[0]['planned_start_at']);
+        $this->assertEquals($this->at('2026-10-12 06:00'), $this->opsFor($result, $long)[0]['planned_start_at']);
+    }
+
     public function test_too_few_operators_is_a_workforce_infeasibility(): void
     {
         $this->fakeWorkforce(operators: 1);
