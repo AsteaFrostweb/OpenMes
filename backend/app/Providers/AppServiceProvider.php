@@ -52,6 +52,13 @@ class AppServiceProvider extends ServiceProvider
             \App\Extension\Contracts\WorkforceProvider::class,
             \App\Extension\Contracts\Null\NullWorkforceProvider::class,
         );
+        // Operator and qualified-operator counts for finite-capacity scheduling.
+        // Its own contract so existing WorkforceProvider implementations keep
+        // loading; the null binding leaves scheduling machine-constrained only.
+        $this->app->bind(
+            \App\Extension\Contracts\WorkforceCapacityProvider::class,
+            \App\Extension\Contracts\Null\NullWorkforceCapacityProvider::class,
+        );
         // Request-scoped tenant for headless (API-key) contexts. Set per request
         // by AuthenticateApiKey; falls through to null for user-authenticated
         // requests, which resolve the tenant from the logged-in user instead.

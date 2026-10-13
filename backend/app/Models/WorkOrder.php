@@ -328,7 +328,7 @@ class WorkOrder extends Model
      * @param  array<int, array<string, mixed>>  $steps
      * @return array<string, int>
      */
-    private function selectedVariantSteps(array $steps): array
+    public function selectedVariantSteps(array $steps): array
     {
         $chosen = [];
         $explicit = [];
