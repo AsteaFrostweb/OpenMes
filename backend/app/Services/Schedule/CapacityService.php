@@ -2,11 +2,15 @@
 
 namespace App\Services\Schedule;
 
+use App\Enums\ScheduledOperationStatus;
 use App\Extension\Contracts\WorkforceProvider;
 use App\Models\Line;
 use App\Models\MaintenanceEvent;
+use App\Models\ScheduledOperation;
 use App\Models\Shift;
 use App\Models\WorkOrder;
+use App\Models\Workstation;
+use App\Services\Schedule\Finite\ResourceCalendar;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -219,6 +223,86 @@ class CapacityService
                 'code' => null,
                 'planning_efficiency_pct' => 100.0,
                 'cells' => $this->finalizeCells($unassigned),
+            ];
+        }
+
+        return $this->grid($granularity, $buckets, $resources);
+    }
+
+    /**
+     * Build the workstation-axis grid from the committed operation plan.
+     *
+     * Available = the station's working time in the bucket (its line's shifts
+     * minus line and station maintenance, {@see ResourceCalendar}) × the line's
+     * planning efficiency. Planned = the scheduled operations committed on the
+     * station, as standard work: the working time they occupy × the same
+     * efficiency, since the scheduler stretched them by its inverse. Operations
+     * exist only for orders placed by the finite-capacity scheduler, so a
+     * station whose work was only ever placed by hand reads as idle here — the
+     * line axis is where that work shows.
+     *
+     * @return array{granularity: string, buckets: array<int, array>, resources: array<int, array>}
+     */
+    public function workstationCapacity(Carbon $rangeStart, Carbon $rangeEnd, string $granularity = 'week'): array
+    {
+        $granularity = in_array($granularity, ['day', 'week'], true) ? $granularity : 'week';
+
+        $rangeStart = $rangeStart->copy()->startOfDay();
+        $rangeEnd = $rangeEnd->copy()->endOfDay();
+        $buckets = $this->buildBuckets($rangeStart, $rangeEnd, $granularity);
+
+        $lines = Line::where('is_active', true)->get()->keyBy('id');
+        $stations = Workstation::with('line:id,name')
+            ->where('is_active', true)
+            ->whereIn('line_id', $lines->keys())
+            ->get()
+            ->sortBy(fn (Workstation $w) => [$w->line?->name, $w->name])
+            ->values();
+
+        $calendar = ResourceCalendar::forHorizon($rangeStart, $rangeEnd);
+        $operations = ScheduledOperation::committed()
+            ->whereIn('workstation_id', $stations->pluck('id'))
+            ->whereIn('status', [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value])
+            ->whereHas('workOrder', fn ($q) => $q->whereIn('status', WorkOrder::ACTIVE_STATUSES))
+            ->where('planned_start_at', '<', $rangeEnd)
+            ->where('planned_end_at', '>', $rangeStart)
+            ->get()
+            ->groupBy('workstation_id');
+
+        $resources = [];
+        foreach ($stations as $station) {
+            $factor = $lines->get($station->line_id)->planningEfficiencyFactor();
+            $windows = $calendar->windows((int) $station->line_id, $station->id);
+
+            $cells = [];
+            foreach ($buckets as $bucket) {
+                $from = ResourceCalendar::toMinutes($bucket['start']);
+                $to = ResourceCalendar::toMinutes($bucket['end']) + 1;
+                $calendarMinutes = ResourceCalendar::workingMinutesBetween($windows, $from, $to);
+
+                $occupied = 0;
+                foreach ($operations->get($station->id, collect()) as $op) {
+                    $occupied += ResourceCalendar::workingMinutesBetween(
+                        $windows,
+                        max($from, ResourceCalendar::toMinutes($op->planned_start_at)),
+                        min($to, ResourceCalendar::toMinutes($op->planned_end_at)),
+                    );
+                }
+
+                $cells[$bucket['key']] = [
+                    'calendar_minutes' => $calendarMinutes,
+                    'available_minutes' => $calendarMinutes * $factor,
+                    'planned_minutes' => $occupied * $factor,
+                    'unestimated_count' => 0,
+                ];
+            }
+
+            $resources[] = [
+                'id' => $station->id,
+                'name' => $station->name,
+                'code' => $station->line?->name,
+                'planning_efficiency_pct' => round($factor * 100, 2),
+                'cells' => $this->finalizeCells($cells),
             ];
         }
 

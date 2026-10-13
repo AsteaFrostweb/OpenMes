@@ -146,8 +146,13 @@ export default function Capacity() {
         router.reload({ only: ['grid'] });
     };
 
-    const resourceLabel = axis === 'crew' ? __('Crew') : __('Line');
-    const emptyText = axis === 'crew' ? __('No active crews.') : __('No active lines.');
+    const resourceLabel = { crew: __('Crew'), workstation: __('Workstation') }[axis] ?? __('Line');
+    const emptyText = { crew: __('No active crews.'), workstation: __('No active workstations.') }[axis] ?? __('No active lines.');
+    const axisHint = {
+        line: __('Click a cell to see and reschedule its work orders.'),
+        crew: __('Crew planned hours are the labor demand of the lines each crew staffs.'),
+        workstation: __('Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.'),
+    }[axis];
 
     return (
         <AppLayout>
@@ -174,6 +179,9 @@ export default function Capacity() {
                             <button type="button" onClick={() => setAxis('crew')} className={`px-3 py-1 text-xs ${axis === 'crew' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
                                 {__('Crew')}
                             </button>
+                            <button type="button" onClick={() => setAxis('workstation')} className={`px-3 py-1 text-xs ${axis === 'workstation' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
+                                {__('Workstation')}
+                            </button>
                         </div>
                         <div className="inline-flex rounded-om-sm border border-om-line overflow-hidden">
                             <button type="button" onClick={() => setGranularity('week')} className={`px-3 py-1 text-xs ${granularity === 'week' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
@@ -193,7 +201,7 @@ export default function Capacity() {
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-running inline-block" />{__('Under 80%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-500 inline-block" />{__('80–100%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-blocked inline-block" />{__('Over 100%')}</span>
-                    <span>{axis === 'line' ? __('Click a cell to see and reschedule its work orders.') : __('Crew planned hours are the labor demand of the lines each crew staffs.')}</span>
+                    <span>{axisHint}</span>
                 </div>
 
                 <div className="flex gap-4 items-start">

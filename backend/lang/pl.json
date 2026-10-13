@@ -6979,5 +6979,7 @@
     "No work orders to schedule — every active order already has a time plan, or none has a routing.": "Brak zleceń do zaplanowania — każde aktywne zlecenie ma już plan czasowy albo żadne nie ma marszruty.",
     "Committed operation plan": "Zatwierdzony plan operacji",
     "Operations of active work orders from applied schedules. Moving an order by hand on the planner removes its rows here; the next simulation works around its new time plan.": "Operacje aktywnych zleceń z zastosowanych harmonogramów. Ręczne przesunięcie zlecenia w planerze usuwa tutaj jego wiersze; kolejna symulacja uwzględni jego nowy plan czasowy.",
-    "No schedule has been applied yet.": "Nie zastosowano jeszcze żadnego harmonogramu."
+    "No schedule has been applied yet.": "Nie zastosowano jeszcze żadnego harmonogramu.",
+    "No active workstations.": "Brak aktywnych stanowisk.",
+    "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Planowane godziny stanowisk pochodzą z zastosowanych harmonogramów automatycznych; praca zaplanowana wyłącznie ręcznie jest widoczna na osi linii."
 }

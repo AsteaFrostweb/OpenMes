@@ -21,6 +21,12 @@ The capacity view shows both figures. Load and overload are measured against
 effective capacity. Crews read the same factor from the workforce provider when
 it exposes `planning_efficiency_pct`.
 
+The capacity view has three axes: line, crew and **workstation**. The
+workstation axis compares each station's effective capacity (its line's shifts
+minus line and station maintenance, × the line's efficiency) with the operations
+committed on it by applied automatic schedules. Work that was only ever placed
+by hand has no operations, so it shows on the line axis and not here.
+
 Planning efficiency is deliberately **not OEE**. Calendar capacity already
 removes the availability losses OpenMES knows about. Multiplying by a full OEE
 figure would count those losses twice. A value derived from historical OEE may
