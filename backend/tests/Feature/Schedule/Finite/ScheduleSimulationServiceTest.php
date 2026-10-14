@@ -298,4 +298,46 @@ class ScheduleSimulationServiceTest extends TestCase
         }
         $this->assertNotSame($other->id, $op->fresh()->workstation_id);
     }
+
+    public function test_a_draft_override_respects_committed_work_outside_the_draft(): void
+    {
+        $line = $this->line();
+        $type = WorkstationType::factory()->create();
+        $first = $this->station($line, $type);
+        $second = $this->station($line, $type);
+        // Planned earlier and committed on the second station, Monday 06–07.
+        $other = $this->order($line, [['estimated_duration_minutes' => 60]], [
+            'planned_start_at' => $this->at('2026-10-12 06:00'), 'planned_end_at' => $this->at('2026-10-12 07:00'),
+        ]);
+        ScheduledOperation::create([
+            'work_order_id' => $other->id, 'step_number' => 10, 'workstation_id' => $second->id, 'line_id' => $line->id,
+            'planned_start_at' => $this->at('2026-10-12 06:00'), 'planned_end_at' => $this->at('2026-10-12 07:00'),
+            'status' => ScheduledOperationStatus::Scheduled, 'required_operators' => 1, 'resource_source' => ScheduledOperation::SOURCE_AUTO,
+        ]);
+        $order = $this->order($line, [['estimated_duration_minutes' => 60, 'workstation_type_id' => $type->id]]);
+        $op = $this->service->generate($this->request(), $this->user)->operations()->where('work_order_id', $order->id)->first();
+        $this->assertSame($first->id, $op->workstation_id);
+
+        $this->expectException(ValidationException::class);
+        $this->service->overrideWorkstation($op, $second, $this->user);
+    }
+
+    public function test_a_draft_override_respects_a_line_window_planned_by_hand(): void
+    {
+        $type = WorkstationType::factory()->create();
+        $lineA = $this->line();
+        $lineB = $this->line();
+        $this->station($lineA, $type);
+        $onB = $this->station($lineB, $type);
+        // Placed by hand on line B with no operations: the whole line is taken.
+        $this->order($lineB, [['estimated_duration_minutes' => 60]], [
+            'planned_start_at' => $this->at('2026-10-12 06:00'), 'planned_end_at' => $this->at('2026-10-12 08:00'),
+        ]);
+        $order = $this->order($lineA, [['estimated_duration_minutes' => 60, 'workstation_type_id' => $type->id]]);
+        $op = $this->service->generate($this->request(), $this->user)->operations()->where('work_order_id', $order->id)->first();
+        $this->assertEquals($this->at('2026-10-12 06:00'), $op->planned_start_at);
+
+        $this->expectException(ValidationException::class);
+        $this->service->overrideWorkstation($op, $onB, $this->user);
+    }
 }

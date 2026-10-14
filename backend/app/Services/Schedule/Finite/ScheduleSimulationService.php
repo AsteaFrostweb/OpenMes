@@ -2,6 +2,7 @@
 
 namespace App\Services\Schedule\Finite;
 
+use App\Enums\ScheduledOperationStatus;
 use App\Models\BatchStep;
 use App\Models\ScheduledOperation;
 use App\Models\ScheduleSimulation;
@@ -184,15 +185,7 @@ class ScheduleSimulationService
             throw ValidationException::withMessages(['workstation_id' => __('Only a scheduled operation can be moved to another workstation.')]);
         }
 
-        $clash = ScheduledOperation::where('id', '!=', $operation->id)
-            ->where(fn ($q) => $operation->schedule_simulation_id === null
-                ? $q->whereNull('schedule_simulation_id')
-                : $q->where('schedule_simulation_id', $operation->schedule_simulation_id))
-            ->where('workstation_id', $station->id)
-            ->where('planned_start_at', '<', $operation->planned_end_at)
-            ->where('planned_end_at', '>', $operation->planned_start_at)
-            ->exists();
-        if ($clash) {
+        if ($this->stationBusy($operation, $station)) {
             throw ValidationException::withMessages(['workstation_id' => __('The workstation is already booked in this window.')]);
         }
 
@@ -230,6 +223,49 @@ class ScheduleSimulationService
 
             return $operation->fresh();
         });
+    }
+
+    /**
+     * Whether the station is taken in the operation's window by anything the
+     * scheduler itself works around: other operations of the same plan (the
+     * draft, or the committed plan), committed operations of orders outside a
+     * draft, and the whole-line window of an order planned by hand without
+     * operations. Orders a draft replans do not count with their old plan.
+     */
+    private function stationBusy(ScheduledOperation $operation, Workstation $station): bool
+    {
+        $draftId = $operation->schedule_simulation_id;
+        $draftOrders = $draftId === null
+            ? collect()
+            : ScheduledOperation::where('schedule_simulation_id', $draftId)->distinct()->pluck('work_order_id');
+        $placed = [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value];
+        $overlaps = fn ($q) => $q->where('planned_start_at', '<', $operation->planned_end_at)
+            ->where('planned_end_at', '>', $operation->planned_start_at);
+
+        $operationClash = ScheduledOperation::where('id', '!=', $operation->id)
+            ->where('workstation_id', $station->id)
+            ->whereIn('status', $placed)
+            ->where($overlaps)
+            ->whereHas('workOrder', fn ($q) => $q->whereIn('status', WorkOrder::ACTIVE_STATUSES))
+            ->where(fn ($q) => $draftId === null
+                ? $q->whereNull('schedule_simulation_id')
+                : $q->where('schedule_simulation_id', $draftId)
+                    ->orWhere(fn ($c) => $c->whereNull('schedule_simulation_id')->whereNotIn('work_order_id', $draftOrders)))
+            ->exists();
+        if ($operationClash) {
+            return true;
+        }
+
+        $withOperations = ScheduledOperation::committed()->whereIn('status', $placed)->distinct()->select('work_order_id');
+
+        return WorkOrder::whereIn('status', WorkOrder::ACTIVE_STATUSES)
+            ->where('line_id', $station->line_id)
+            ->where('id', '!=', $operation->work_order_id)
+            ->whereNotIn('id', $draftOrders)
+            ->whereNotIn('id', $withOperations)
+            ->whereNotNull('planned_start_at')
+            ->where($overlaps)
+            ->exists();
     }
 
     /**
