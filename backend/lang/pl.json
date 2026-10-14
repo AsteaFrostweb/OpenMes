@@ -7016,5 +7016,18 @@
     "incl. :time changeover": "w tym :time przezbrojenia",
     "incl. :time set-up": "w tym :time przygotowania",
     "simulation ready for review": "symulacja do przejrzenia",
-    ":count operations committed": "zatwierdzonych operacji: :count"
+    ":count operations committed": "zatwierdzonych operacji: :count",
+    "New simulation": "Nowa symulacja",
+    "Calculates a feasible plan from shifts, machines, people and material. Nothing changes until you apply it.": "Wylicza wykonalny plan na podstawie zmian, maszyn, ludzi i materiału. Nic się nie zmieni, dopóki go nie zastosujesz.",
+    "From day": "Od dnia",
+    "From time": "Od godziny",
+    "Horizon": "Horyzont",
+    "1 week": "1 tydzień",
+    "2 weeks": "2 tygodnie",
+    "4 weeks": "4 tygodnie",
+    "8 weeks": "8 tygodni",
+    "12 weeks": "12 tygodni",
+    ":days days": ":days dni",
+    "Take into account": "Uwzględniaj",
+    "Operator availability": "Dostępność operatorów"
 }

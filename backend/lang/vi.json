@@ -7129,5 +7129,18 @@
     "incl. :time changeover": "gồm :time chuyển đổi",
     "incl. :time set-up": "gồm :time chuẩn bị",
     "simulation ready for review": "mô phỏng chờ xem xét",
-    ":count operations committed": "đã xác nhận :count thao tác"
+    ":count operations committed": "đã xác nhận :count thao tác",
+    "New simulation": "Mô phỏng mới",
+    "Calculates a feasible plan from shifts, machines, people and material. Nothing changes until you apply it.": "Tính kế hoạch khả thi từ ca làm việc, máy móc, nhân sự và vật tư. Không có gì thay đổi cho đến khi bạn áp dụng.",
+    "From day": "Từ ngày",
+    "From time": "Từ giờ",
+    "Horizon": "Phạm vi",
+    "1 week": "1 tuần",
+    "2 weeks": "2 tuần",
+    "4 weeks": "4 tuần",
+    "8 weeks": "8 tuần",
+    "12 weeks": "12 tuần",
+    ":days days": ":days ngày",
+    "Take into account": "Tính đến",
+    "Operator availability": "Nhân sự sẵn có"
 }

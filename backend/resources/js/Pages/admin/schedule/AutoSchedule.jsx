@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { Button, Checkbox, Dropdown, Icon, InlineAlert, StatusPill } from '@openmes/ui';
 import AppLayout from '../../../layouts/AppLayout';
-import AppDateTimePicker from '../../../components/AppDateTimePicker';
+import AppDatePicker from '../../../components/AppDatePicker';
 import Tooltip from '../../../components/Tooltip';
 import useConfirm from '../../../components/useConfirm';
 import { __, formatDate, formatNumber } from '../../../lib/i18n';
@@ -438,10 +438,28 @@ function PlanView({ scope, operations, stationsByType, canDecide, withSummary = 
 
 // ─── Generate form ───────────────────────────────────────────────────────────
 
+/** Every half hour of the day, 24-hour clock — the plant's own times. */
+const HALF_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, '0')}:${i % 2 ? '30' : '00'}`);
+
+/** "2026-10-14T16:04" → ["2026-10-14", "16:30"]: the next half hour from now. */
+function splitStart(value) {
+    const [day, time = '06:00'] = (value ?? '').split('T');
+    const [h, m] = time.split(':').map(Number);
+    const next = h * 60 + m === 0 ? 0 : Math.ceil((h * 60 + m) / 30) * 30;
+    if (next >= 24 * 60) {
+        const d = new Date(`${day}T12:00:00`);
+        d.setDate(d.getDate() + 1);
+        return [d.toISOString().slice(0, 10), '00:00'];
+    }
+    return [day, `${String(Math.floor(next / 60)).padStart(2, '0')}:${String(next % 60).padStart(2, '0')}`];
+}
+
 function GenerateForm({ defaults, canDecide }) {
+    const [initialDay, initialTime] = splitStart(defaults.start);
     const form = useForm({
-        start: defaults.start,
-        horizon_days: defaults.horizon_days,
+        day: initialDay,
+        time: initialTime,
+        horizon_days: String(defaults.horizon_days),
         scope: defaults.scope,
         respect_material: defaults.respect_material,
         respect_workforce: defaults.respect_workforce ?? true,
@@ -449,36 +467,55 @@ function GenerateForm({ defaults, canDecide }) {
 
     const submit = (e) => {
         e.preventDefault();
+        form.transform(({ day, time, ...rest }) => ({ ...rest, start: day ? `${day}T${time}` : '' }));
         form.post('/admin/schedule/simulations', { preserveScroll: true });
     };
 
-    // Same field anatomy as ResourceForm, so this reads like every other form.
+    const horizons = [[7, __('1 week')], [14, __('2 weeks')], [28, __('4 weeks')], [56, __('8 weeks')], [84, __('12 weeks')]]
+        .filter(([days]) => days <= defaults.max_horizon_days)
+        .map(([days, text]) => ({ value: String(days), label: text }));
+    if (!horizons.some((o) => o.value === form.data.horizon_days)) {
+        horizons.push({ value: form.data.horizon_days, label: __(':days days', { days: form.data.horizon_days }) });
+    }
+
+    // Same caption style as ResourceForm, so this reads like every other form.
     const label = 'block font-mono text-[9.5px] uppercase tracking-[0.08em] text-om-faint mb-[7px]';
-    const input = 'w-full bg-om-bg border border-om-line rounded-om-sm px-3 py-2.5 text-[13px] text-om-ink outline-none focus:border-om-accent focus:ring-[3px] focus:ring-[rgba(234,90,43,.12)]';
     const error = (key) => form.errors[key] && <p className="mt-1 text-[11.5px] text-om-blocked">{form.errors[key]}</p>;
 
     return (
-        <form onSubmit={submit} className="space-y-4 rounded-om-sm border border-om-line bg-om-card p-5">
-            <div>
-                <div className="text-[15px] font-semibold text-om-ink">{__('Simulate a schedule')}</div>
-                <p className="mt-1 text-[12.5px] text-om-muted">
-                    {__('Places each remaining step in the earliest slot that fits shifts, maintenance, planning efficiency, already planned work, step order, material, eligible workstations and operators. Nothing changes until you apply the result.')}
+        <form onSubmit={submit} className="rounded-om-sm border border-om-line bg-om-card p-5">
+            <div className="mb-4">
+                <div className="text-[15px] font-semibold text-om-ink">{__('New simulation')}</div>
+                <p className="mt-0.5 text-[12.5px] text-om-muted">
+                    {__('Calculates a feasible plan from shifts, machines, people and material. Nothing changes until you apply it.')}
                 </p>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(260px,1.2fr)_120px_minmax(240px,1fr)]">
+
+            <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_120px_minmax(150px,0.8fr)_minmax(240px,1.3fr)_auto]">
                 <div>
-                    <div className={label}>{__('Start')}</div>
-                    <AppDateTimePicker value={form.data.start} onChange={(v) => form.setData('start', v)} aria-label={__('Start')} />
+                    <div className={label}>{__('From day')}</div>
+                    <AppDatePicker className="w-full" value={form.data.day || null} onChange={(d) => form.setData('day', d ?? '')} aria-label={__('From day')} />
                     {error('start')}
                 </div>
                 <div>
-                    <label htmlFor="auto-horizon" className={label}>{__('Horizon (days)')}</label>
-                    <input
-                        id="auto-horizon"
-                        type="number" min={1} max={defaults.max_horizon_days}
+                    <div className={label}>{__('From time')}</div>
+                    <Dropdown
+                        className="w-full"
+                        options={HALF_HOURS.map((t) => ({ value: t, label: t }))}
+                        value={form.data.time}
+                        onChange={(v) => form.setData('time', v)}
+                        aria-label={__('From time')}
+                    />
+                </div>
+                <div>
+                    <div className={label}>{__('Horizon')}</div>
+                    <Dropdown
+                        className="w-full"
+                        options={horizons}
                         value={form.data.horizon_days}
-                        onChange={(e) => form.setData('horizon_days', e.target.value)}
-                        className={input}
+                        onChange={(v) => form.setData('horizon_days', v)}
+                        aria-label={__('Horizon')}
+                        searchable={false}
                     />
                     {error('horizon_days')}
                 </div>
@@ -493,29 +530,33 @@ function GenerateForm({ defaults, canDecide }) {
                         value={form.data.scope}
                         onChange={(v) => form.setData('scope', v)}
                         aria-label={__('Orders to schedule')}
+                        searchable={false}
                     />
                     {error('scope')}
                 </div>
+                <Button type="submit" className="py-[11px]!" disabled={!canDecide || form.processing} leftIcon={<Icon name="calendar-cog" size={14} />}>
+                    {form.processing ? __('Calculating…') : __('Simulate')}
+                </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+
+            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-om-line pt-4">
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.08em] text-om-faint">{__('Take into account')}</span>
                 <Checkbox
                     checked={!!form.data.respect_material}
                     onChange={(v) => form.setData('respect_material', v)}
-                    label={__('Hold orders that stock cannot cover')}
+                    label={__('Material availability')}
                 />
                 <Checkbox
                     checked={!!form.data.respect_workforce}
                     onChange={(v) => form.setData('respect_workforce', v)}
-                    label={__('Count available operators')}
+                    label={__('Operator availability')}
                 />
-                <div className="ml-auto">
-                    <Button type="submit" disabled={!canDecide || form.processing} leftIcon={<Icon name="calendar-cog" size={14} />}>
-                        {form.processing ? __('Calculating…') : __('Simulate')}
-                    </Button>
-                </div>
             </div>
+
             {!canDecide && (
-                <InlineAlert severity="info" title={__('Only a supervisor or administrator can simulate or apply schedules.')} />
+                <div className="mt-4">
+                    <InlineAlert severity="info" title={__('Only a supervisor or administrator can simulate or apply schedules.')} />
+                </div>
             )}
         </form>
     );

@@ -7016,5 +7016,18 @@
     "incl. :time changeover": "incl. :time changeover",
     "incl. :time set-up": "incl. :time set-up",
     "simulation ready for review": "simulation ready for review",
-    ":count operations committed": ":count operations committed"
+    ":count operations committed": ":count operations committed",
+    "New simulation": "New simulation",
+    "Calculates a feasible plan from shifts, machines, people and material. Nothing changes until you apply it.": "Calculates a feasible plan from shifts, machines, people and material. Nothing changes until you apply it.",
+    "From day": "From day",
+    "From time": "From time",
+    "Horizon": "Horizon",
+    "1 week": "1 week",
+    "2 weeks": "2 weeks",
+    "4 weeks": "4 weeks",
+    "8 weeks": "8 weeks",
+    "12 weeks": "12 weeks",
+    ":days days": ":days days",
+    "Take into account": "Take into account",
+    "Operator availability": "Operator availability"
 }
