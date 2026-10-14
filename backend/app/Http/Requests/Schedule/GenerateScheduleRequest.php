@@ -26,6 +26,7 @@ class GenerateScheduleRequest extends FormRequest
     {
         $this->merge([
             'respect_material' => $this->boolean('respect_material', true),
+            'respect_workforce' => $this->boolean('respect_workforce', true),
         ]);
     }
 
@@ -36,6 +37,7 @@ class GenerateScheduleRequest extends FormRequest
             'horizon_days' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_HORIZON_DAYS],
             'scope' => ['nullable', Rule::in(SchedulingRequest::SCOPES)],
             'respect_material' => ['boolean'],
+            'respect_workforce' => ['boolean'],
             'work_order_ids' => ['nullable', 'array', 'max:500'],
             'work_order_ids.*' => ['integer', Rule::exists('work_orders', 'id')->whereNull('deleted_at')],
         ];
@@ -59,6 +61,7 @@ class GenerateScheduleRequest extends FormRequest
             scope: $this->input('scope') ?: SchedulingRequest::SCOPE_UNPLANNED,
             respectMaterial: $this->boolean('respect_material'),
             workOrderIds: $this->filled('work_order_ids') ? array_map('intval', $this->input('work_order_ids')) : null,
+            respectWorkforce: $this->boolean('respect_workforce'),
         );
     }
 }

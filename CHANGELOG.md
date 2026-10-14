@@ -18,7 +18,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   - work already planned and the order of the routing steps;
   - material shortages, netted across orders in scheduling order (no material-ready date is ever invented);
   - fixed workstations, and automatic selection from the equipment-class pool;
-  - operator and skill counts, where a workforce provider tracks them;
+  - operator and skill counts: the operators and workers assigned to each line, less absences, and
+    their skills where the workforce module records them (lines nobody is assigned to
+    stay machine-constrained; the simulation form can switch people off for a run);
   - optional sequence-dependent **changeover rules**.
 
   The plan is a what-if draft. Nothing changes until a Supervisor or Admin applies it, and

@@ -63,6 +63,8 @@ class FiniteScheduler
     /** @var Collection<int, Line> */
     private Collection $lines;
 
+    private bool $respectWorkforce = true;
+
     public function __construct(
         private readonly OperationProjector $projector,
         private readonly WorkforceCapacityProvider $workforce,
@@ -82,6 +84,7 @@ class FiniteScheduler
     {
         $this->calendar = ResourceCalendar::forHorizon($request->start, $request->end);
         $this->timeline = new Timeline;
+        $this->respectWorkforce = $request->respectWorkforce;
         $this->lines = Line::where('is_active', true)->get()->keyBy('id');
         $this->workstations = Workstation::where('is_active', true)
             ->whereIn('line_id', $this->lines->keys())
@@ -415,10 +418,14 @@ class FiniteScheduler
     /**
      * Which people constraint a window breaks, if any: too few operators on the
      * line, or too few holding the step's skills. Untracked (null) never
-     * constrains.
+     * constrains, and neither does anything when the run ignores people.
      */
     private function laborShortfall(OperationDemand $demand, int $lineId, int $start, int $end): ?string
     {
+        if (! $this->respectWorkforce) {
+            return null;
+        }
+
         $from = ResourceCalendar::toCarbon($start);
         $to = ResourceCalendar::toCarbon($end);
 

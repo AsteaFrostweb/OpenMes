@@ -211,6 +211,7 @@ function GenerateForm({ defaults, canDecide }) {
         horizon_days: defaults.horizon_days,
         scope: defaults.scope,
         respect_material: defaults.respect_material,
+        respect_workforce: defaults.respect_workforce ?? true,
     });
 
     const submit = (e) => {
@@ -249,6 +250,10 @@ function GenerateForm({ defaults, canDecide }) {
                 <label className="text-[11px] text-om-ink inline-flex items-center gap-1.5 pb-1.5">
                     <input type="checkbox" checked={!!form.data.respect_material} onChange={(e) => form.setData('respect_material', e.target.checked)} />
                     {__('Hold orders that stock cannot cover')}
+                </label>
+                <label className="text-[11px] text-om-ink inline-flex items-center gap-1.5 pb-1.5">
+                    <input type="checkbox" checked={!!form.data.respect_workforce} onChange={(e) => form.setData('respect_workforce', e.target.checked)} />
+                    {__('Count available operators')}
                 </label>
                 <Button type="submit" size="sm" disabled={!canDecide || form.processing} leftIcon={<Icon name="calendar-cog" size={14} />}>
                     {form.processing ? __('Calculating…') : __('Simulate')}

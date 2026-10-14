@@ -59,6 +59,7 @@ class AutoScheduleController extends Controller
                 'max_horizon_days' => GenerateScheduleRequest::MAX_HORIZON_DAYS,
                 'scope' => SchedulingRequest::SCOPE_UNPLANNED,
                 'respect_material' => true,
+                'respect_workforce' => true,
             ],
             'statusLabels' => collect(ScheduledOperationStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->label()]),
             'canDecide' => (bool) request()->user()?->hasAnyRole(['Admin', 'Supervisor']),

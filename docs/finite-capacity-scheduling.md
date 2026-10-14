@@ -114,10 +114,29 @@ public function qualifiedOperators(?int $lineId, CarbonInterface $start, CarbonI
 ```
 
 A return value of `null` means "not tracked" and never constrains the schedule.
-Core binds a null implementation, so scheduling stays machine-constrained until a
-workforce module binds a real one. This contract is separate from
-`WorkforceProvider` so that existing implementations of that interface keep
-loading.
+This contract is separate from `WorkforceProvider` so that existing
+implementations of that interface keep loading.
+
+Core binds `AssignedStaffCapacityProvider`, which counts from data OpenMES
+already holds:
+
+- the operator accounts assigned to the line (Admin → Lines → Operators), the
+  active, non-logistics workers assigned to its workstations, and the workers of
+  any crew the workforce module assigns to it — each person once, an account
+  linked to a worker counting as that worker;
+- less the workers `WorkforceProvider::absentWorkerIds()` reports away on any day
+  of the window;
+- for qualification, those holding every required skill, when the workforce
+  module adds `Worker::skills()`.
+
+A line nobody is assigned to answers `null`, so an installation that never
+assigned workers schedules on machine capacity alone, exactly as before.
+Without `Worker::skills()` qualification is not tracked. Crew break windows are
+left to the shift calendar. A workforce module may bind its own provider
+instead.
+
+Untick **Count available operators** on the simulation form (API:
+`respect_workforce: false`) to schedule a run on machines alone.
 
 A step's required skills come from its process segment. They are frozen into
 the work-order snapshot as `required_skill_ids`, so later edits to the segment
@@ -203,7 +222,7 @@ All endpoints require the `Admin` or `Supervisor` role (Sanctum).
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/v1/schedule/operations` | Committed operation plan. Filters: `work_order_id`, `workstation_id`, `line_id`, `from`, `to`, `status[]` |
-| POST | `/api/v1/schedule/simulations` | Generate a draft (`start`, `horizon_days` ≤ 90, `scope`, `respect_material`, `work_order_ids[]`) |
+| POST | `/api/v1/schedule/simulations` | Generate a draft (`start`, `horizon_days` ≤ 90, `scope`, `respect_material`, `respect_workforce`, `work_order_ids[]`) |
 | GET | `/api/v1/schedule/simulations/{id}` | A simulation with summary and operations |
 | POST | `/api/v1/schedule/simulations/{id}/apply` | Commit a draft (409 when stale or not a draft) |
 | POST | `/api/v1/schedule/simulations/{id}/discard` | Discard a draft |
