@@ -131,6 +131,21 @@ class ScheduleSimulationServiceTest extends TestCase
         );
     }
 
+    public function test_a_shift_level_end_date_follows_the_new_minute_plan(): void
+    {
+        // Placed on the board for Monday's shift, never minute-planned; the run
+        // starts on Tuesday, after that end date.
+        $order = $this->order($this->line(), [['estimated_duration_minutes' => 60]], [
+            'due_date' => '2026-10-12', 'end_date' => '2026-10-12',
+        ]);
+        $simulation = $this->service->generate($this->request(['start' => $this->at('2026-10-13 06:00')]), $this->user);
+
+        $this->assertSame(1, $this->service->apply($simulation, $this->user)['applied']);
+        $order->refresh();
+        $this->assertEquals($this->at('2026-10-13 06:00'), $order->planned_start_at);
+        $this->assertSame('2026-10-13', $order->end_date->toDateString());
+    }
+
     public function test_infeasible_orders_keep_their_placement_but_their_reasons_are_committed(): void
     {
         $line = $this->line();

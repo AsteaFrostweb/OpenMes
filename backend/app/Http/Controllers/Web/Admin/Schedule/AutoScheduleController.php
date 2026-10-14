@@ -85,6 +85,10 @@ class AutoScheduleController extends Controller
             $result = $this->simulations->apply($simulation, $request->user());
         } catch (\DomainException $e) {
             return redirect()->route('admin.schedule.auto')->with('error', $e->getMessage());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // The planner refused one of the moves, so nothing was applied. The
+            // page has no field to hang the error on — say it in the flash.
+            return redirect()->route('admin.schedule.auto')->with('error', collect($e->errors())->flatten()->first());
         }
 
         $message = __('Schedule applied to :applied work orders.', ['applied' => $result['applied']]);

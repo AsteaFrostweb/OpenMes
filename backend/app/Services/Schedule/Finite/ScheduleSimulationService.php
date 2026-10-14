@@ -261,6 +261,13 @@ class ScheduleSimulationService
             $input['line_id'] = $this->mainLine($rows);
         }
 
+        // An order placed on the board by shift carries an end date for that
+        // span. The minute plan replaces the span, so its end date follows the
+        // plan — a stale one before the new start would be refused outright.
+        if ($order->end_date !== null) {
+            $input['end_date'] = Carbon::parse($input['planned_end_at'])->toDateString();
+        }
+
         // A zero-length plan (everything left is already done) is no plan.
         $from = $input['planned_start_at'] ?? $order->planned_start_at?->toDateTimeString();
         if ($from !== null && Carbon::parse($input['planned_end_at'])->lte(Carbon::parse($from))) {
