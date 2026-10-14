@@ -9,6 +9,7 @@ use App\Models\ScheduledOperation;
 use App\Models\WorkOrder;
 use App\Models\Workstation;
 use App\Services\Material\MaterialAllocationService;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 /**
@@ -159,6 +160,7 @@ class FiniteScheduler
             'work_orders' => $summaries,
             'resources' => $this->resourceLoads(),
             'counts' => $this->counts($operations),
+            'inputs_fingerprint' => $this->inputsFingerprint($orders->pluck('id')->all(), $request->start, $request->end),
         ];
     }
 
@@ -191,6 +193,66 @@ class FiniteScheduler
     }
 
     /**
+     * What a run must work around: the committed operations of every active
+     * order outside the run, and the minute plans of active orders outside it
+     * that were never scheduled operation by operation.
+     *
+     * @param  list<int>  $runIds
+     * @return array{0: Collection<int, ScheduledOperation>, 1: Collection<int, WorkOrder>}
+     */
+    private function commitments(array $runIds, CarbonInterface $start, CarbonInterface $end): array
+    {
+        $committed = ScheduledOperation::committed()
+            ->with('workOrder.productType')
+            ->whereNotIn('work_order_id', $runIds)
+            ->whereIn('status', [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value])
+            ->whereNotNull('planned_start_at')
+            ->where('planned_start_at', '<', $end)
+            ->where('planned_end_at', '>', $start)
+            ->whereHas('workOrder', fn ($q) => $q->whereIn('status', WorkOrder::ACTIVE_STATUSES))
+            ->orderBy('id')
+            ->get();
+
+        $minutePlanned = WorkOrder::with('productType')
+            ->whereIn('status', WorkOrder::ACTIVE_STATUSES)
+            ->whereNotIn('id', [...$runIds, ...$committed->pluck('work_order_id')->unique()->all()])
+            ->whereNotNull('line_id')
+            ->whereNotNull('planned_start_at')
+            ->whereNotNull('planned_end_at')
+            ->where('planned_start_at', '<', $end)
+            ->where('planned_end_at', '>', $start)
+            ->orderBy('id')
+            ->get();
+
+        return [$committed, $minutePlanned];
+    }
+
+    /**
+     * A digest of everything a run read besides its own orders: the work it
+     * worked around, shifts, maintenance, changeover rules, line efficiency
+     * and the active stations. A draft is stale once this differs, whatever
+     * changed — a drag on the board, a new maintenance slot, an edited rule.
+     * Content, not timestamps, so a change in the same second still counts.
+     *
+     * @param  list<int>  $runIds
+     */
+    public function inputsFingerprint(array $runIds, CarbonInterface $start, CarbonInterface $end): string
+    {
+        [$committed, $minutePlanned] = $this->commitments($runIds, $start, $end);
+        $iso = fn ($t) => $t?->toIso8601String();
+
+        return md5(json_encode([
+            $committed->map(fn ($op) => [$op->id, $op->work_order_id, $op->workstation_id, $op->line_id, $iso($op->planned_start_at), $iso($op->planned_end_at), $op->status->value, $op->required_operators])->all(),
+            $minutePlanned->map(fn ($o) => [$o->id, $o->line_id, $iso($o->planned_start_at), $iso($o->planned_end_at), $o->product_type_id])->all(),
+            ResourceCalendar::maintenanceFor($start, $end)->map(fn ($m) => [$m->id, $m->line_id, $m->workstation_id, $iso($m->scheduled_at), $iso($m->scheduled_end_at), $m->status])->all(),
+            \App\Models\Shift::where('is_active', true)->orderBy('id')->get()->map(fn ($sh) => [$sh->id, $sh->line_id, $sh->start_time, $sh->end_time, $sh->days_of_week])->all(),
+            \App\Models\ChangeoverRule::where('is_active', true)->orderBy('id')->get()->map(fn ($r) => [$r->id, $r->attribute, $r->from_value, $r->to_value, $r->workstation_type_id, $r->workstation_id, $r->setup_minutes])->all(),
+            Line::where('is_active', true)->orderBy('id')->get()->map(fn ($l) => [$l->id, (string) $l->planning_efficiency_pct])->all(),
+            Workstation::where('is_active', true)->orderBy('id')->get()->map(fn ($w) => [$w->id, $w->line_id, $w->workstation_type_id])->all(),
+        ]));
+    }
+
+    /**
      * Book what the run must work around: the committed operations of every
      * active order outside the run, and — for orders that have a minute plan but
      * were never scheduled operation by operation — their whole line window.
@@ -199,17 +261,7 @@ class FiniteScheduler
      */
     private function bookCommitments(array $runIds, SchedulingRequest $request): void
     {
-        $active = [WorkOrder::STATUS_PENDING, WorkOrder::STATUS_ACCEPTED, WorkOrder::STATUS_IN_PROGRESS, WorkOrder::STATUS_BLOCKED];
-
-        $committed = ScheduledOperation::committed()
-            ->with('workOrder.productType')
-            ->whereNotIn('work_order_id', $runIds)
-            ->whereIn('status', [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value])
-            ->whereNotNull('planned_start_at')
-            ->where('planned_start_at', '<', $request->end)
-            ->where('planned_end_at', '>', $request->start)
-            ->whereHas('workOrder', fn ($q) => $q->whereIn('status', $active))
-            ->get();
+        [$committed, $minutePlanned] = $this->commitments($runIds, $request->start, $request->end);
 
         foreach ($committed as $op) {
             $start = ResourceCalendar::toMinutes($op->planned_start_at);
@@ -220,16 +272,6 @@ class FiniteScheduler
                 $this->timeline->bookLabor((int) $op->line_id, $start, $end, (int) $op->required_operators);
             }
         }
-
-        $minutePlanned = WorkOrder::with('productType')
-            ->whereIn('status', $active)
-            ->whereNotIn('id', [...$runIds, ...$committed->pluck('work_order_id')->unique()->all()])
-            ->whereNotNull('line_id')
-            ->whereNotNull('planned_start_at')
-            ->whereNotNull('planned_end_at')
-            ->where('planned_start_at', '<', $request->end)
-            ->where('planned_end_at', '>', $request->start)
-            ->get();
 
         foreach ($minutePlanned as $order) {
             $start = ResourceCalendar::toMinutes($order->planned_start_at);

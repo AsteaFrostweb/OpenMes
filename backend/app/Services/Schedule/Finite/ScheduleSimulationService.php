@@ -56,6 +56,7 @@ class ScheduleSimulationService
                     'counts' => $result['counts'],
                     'work_orders' => $result['work_orders'],
                     'resources' => $result['resources'],
+                    'inputs_fingerprint' => $result['inputs_fingerprint'],
                 ],
                 'created_by_id' => $user->id,
             ]);
@@ -102,6 +103,13 @@ class ScheduleSimulationService
             throw new \DomainException(__('Work orders changed after this schedule was generated (:orders). Generate it again.', [
                 'orders' => $changed->pluck('order_no')->implode(', '),
             ]));
+        }
+        // …and so must everything else it read: work planned around, shifts,
+        // maintenance, changeover rules, line efficiency, stations.
+        $inputs = $simulation->summary['inputs_fingerprint'] ?? null;
+        if ($inputs !== null
+            && $inputs !== $this->scheduler->inputsFingerprint($operations->keys()->all(), $simulation->horizon_start, $simulation->horizon_end)) {
+            throw new \DomainException(__('Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.'));
         }
 
         return DB::transaction(function () use ($simulation, $user, $operations, $orders) {

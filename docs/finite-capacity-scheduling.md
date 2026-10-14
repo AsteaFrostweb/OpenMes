@@ -185,7 +185,11 @@ reserved.
      pool dispatch.
    - Orders with infeasible steps keep their placement. Their reasons are still
      committed.
-   - A draft is refused if any of its orders changed after it was generated.
+   - A draft is refused if any of its orders changed after it was generated,
+     or anything else it was calculated from: work planned around it,
+     shifts, maintenance, changeover rules, line efficiency or the active
+     stations. The check compares content, not timestamps, so a change in the
+     same second still counts.
 4. **Discard**: removes the draft and leaves the committed schedule untouched.
 
 A Supervisor/Admin can move a scheduled operation to another active workstation

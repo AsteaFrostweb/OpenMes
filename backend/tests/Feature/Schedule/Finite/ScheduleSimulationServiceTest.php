@@ -340,4 +340,39 @@ class ScheduleSimulationServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->service->overrideWorkstation($op, $onB, $this->user);
     }
+
+    /** @return array<string, \Closure(\App\Models\Line): void> */
+    public static function plantChanges(): array
+    {
+        return [
+            'a changeover rule edited' => [fn ($line) => \App\Models\ChangeoverRule::factory()->create(['is_active' => true])],
+            'another order dragged into the window' => [fn ($line) => \App\Models\WorkOrder::factory()->create([
+                'line_id' => $line->id, 'status' => \App\Models\WorkOrder::STATUS_PENDING,
+                'planned_start_at' => '2026-10-12 06:00:00', 'planned_end_at' => '2026-10-12 08:00:00',
+            ])],
+            'maintenance booked' => [fn ($line) => \App\Models\MaintenanceEvent::create([
+                'title' => 'PM', 'event_type' => \App\Models\MaintenanceEvent::TYPE_PLANNED, 'status' => \App\Models\MaintenanceEvent::STATUS_PENDING,
+                'line_id' => $line->id, 'scheduled_at' => '2026-10-12 06:00:00', 'scheduled_end_at' => '2026-10-12 07:00:00',
+            ])],
+            'line efficiency changed' => [fn ($line) => $line->update(['planning_efficiency_pct' => 80])],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('plantChanges')]
+    public function test_a_draft_is_stale_once_what_it_planned_around_changes(\Closure $change): void
+    {
+        $line = $this->line();
+        $this->order($line, [['estimated_duration_minutes' => 60]]);
+        $simulation = $this->service->generate($this->request(), $this->user);
+
+        // Same second: the clock is frozen, only the content differs.
+        $change($line);
+
+        try {
+            $this->service->apply($simulation, $this->user);
+            $this->fail('A stale draft was applied.');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('changed after this schedule was generated', $e->getMessage());
+        }
+    }
 }

@@ -541,6 +541,9 @@ class CapacityService
         $unestimatedKeys = [];
 
         foreach ($this->projectionsForLine($wo, $lineId) as $projection) {
+            // Deliberately per order, not per line: once an order has committed
+            // operations its primary window counts nowhere, even on a line none
+            // of them runs on. Its load is wherever its operations are.
             if ($ops !== null && $projection === $wo) {
                 continue;
             }

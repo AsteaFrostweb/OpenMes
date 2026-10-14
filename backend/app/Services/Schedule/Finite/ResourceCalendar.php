@@ -42,18 +42,27 @@ class ResourceCalendar
 
     public static function forHorizon(CarbonInterface $start, CarbonInterface $end): self
     {
-        $maintenance = MaintenanceEvent::whereIn('status', [MaintenanceEvent::STATUS_PENDING, 'in_progress'])
-            ->whereNotNull('scheduled_at')
-            ->where('scheduled_at', '<', $end)
-            ->where(fn ($q) => $q->whereNull('scheduled_end_at')->orWhere('scheduled_end_at', '>', $start->copy()->subDay()))
-            ->get();
-
         return new self(
             self::toMinutes($start),
             self::toMinutes($end),
             Shift::where('is_active', true)->get(),
-            $maintenance,
+            self::maintenanceFor($start, $end),
         );
+    }
+
+    /**
+     * Open maintenance that can take time out of [$start, $end).
+     *
+     * @return Collection<int, MaintenanceEvent>
+     */
+    public static function maintenanceFor(CarbonInterface $start, CarbonInterface $end): Collection
+    {
+        return MaintenanceEvent::whereIn('status', [MaintenanceEvent::STATUS_PENDING, 'in_progress'])
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '<', $end)
+            ->where(fn ($q) => $q->whereNull('scheduled_end_at')->orWhere('scheduled_end_at', '>', $start->copy()->subDay()))
+            ->orderBy('id')
+            ->get();
     }
 
     public static function toMinutes(CarbonInterface $moment): int
