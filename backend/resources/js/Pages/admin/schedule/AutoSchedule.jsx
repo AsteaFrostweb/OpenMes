@@ -312,7 +312,8 @@ export default function AutoSchedule() {
     const { confirm, dialog } = useConfirm();
     const [showOnlyProblems, setShowOnlyProblems] = useState(false);
     const placed = (draft?.counts?.scheduled ?? 0) + (draft?.counts?.scheduled_late ?? 0);
-    const draftOps = (draft?.operations ?? []).filter((op) => !showOnlyProblems || op.status !== 'scheduled');
+    const problems = (draft?.operations ?? []).filter((op) => op.status !== 'scheduled');
+    const draftOps = showOnlyProblems ? problems : (draft?.operations ?? []);
 
     const apply = () => confirm(
         {
@@ -369,13 +370,15 @@ export default function AutoSchedule() {
                         </div>
 
                         <div className="flex justify-end">
-                            <Checkbox size="sm" checked={showOnlyProblems} onChange={setShowOnlyProblems} label={__('Only late or infeasible')} />
+                            <Checkbox size="sm" checked={showOnlyProblems} onChange={setShowOnlyProblems} label={`${__('Only late or infeasible')} (${problems.length})`} />
                         </div>
                         <OperationsTable
                             operations={draftOps}
                             stationsByType={stationsByType}
                             canDecide={canDecide}
-                            emptyText={__('No work orders to schedule — every active order already has a time plan, or none has a routing.')}
+                            emptyText={showOnlyProblems && draft.operations?.length
+                                ? __('Every operation is scheduled on time.')
+                                : __('No work orders to schedule — every active order already has a time plan, or none has a routing.')}
                         />
                     </section>
                 )}
