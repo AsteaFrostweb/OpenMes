@@ -34,7 +34,7 @@ class AutoScheduleController extends Controller
         $draft = $this->simulations->currentDraft();
 
         $committed = ScheduledOperation::committed()
-            ->with(['workOrder:id,order_no,status', 'line:id,name', 'workstation:id,name'])
+            ->with(SchedulePresenter::RELATIONS)
             ->whereHas('workOrder', fn ($q) => $q->whereIn('status', WorkOrder::ACTIVE_STATUSES))
             ->where(fn ($q) => $q->whereNull('planned_end_at')->orWhere('planned_end_at', '>=', now()->subDay()))
             ->orderByRaw('planned_start_at is null')

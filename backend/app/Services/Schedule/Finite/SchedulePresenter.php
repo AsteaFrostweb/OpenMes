@@ -15,6 +15,14 @@ use App\Models\ScheduleSimulation;
  */
 class SchedulePresenter
 {
+    /** What {@see operation()} reads; eager-load it on every query it formats. */
+    public const RELATIONS = [
+        'workOrder:id,order_no,status,product_type_id,planned_qty,due_date',
+        'workOrder.productType:id,name,unit_of_measure',
+        'line:id,name',
+        'workstation:id,name',
+    ];
+
     /** @return array<string, mixed> */
     public function operation(ScheduledOperation $op): array
     {
@@ -23,6 +31,10 @@ class SchedulePresenter
             'simulation_id' => $op->schedule_simulation_id,
             'work_order_id' => $op->work_order_id,
             'order_no' => $op->workOrder?->order_no,
+            'product_name' => $op->workOrder?->productType?->name,
+            'planned_qty' => $op->workOrder ? (float) $op->workOrder->planned_qty : null,
+            'unit' => $op->workOrder?->productType?->unit_of_measure,
+            'due_date' => $op->workOrder?->due_date?->toDateString(),
             'batch_step_id' => $op->batch_step_id,
             'step_number' => $op->step_number,
             'step_name' => $op->step_name,
@@ -68,7 +80,7 @@ class SchedulePresenter
 
         if ($withOperations) {
             $out['operations'] = $simulation->operations()
-                ->with(['workOrder:id,order_no', 'line:id,name', 'workstation:id,name'])
+                ->with([...self::RELATIONS])
                 ->get()
                 ->map(fn (ScheduledOperation $op) => $this->operation($op))
                 ->all();

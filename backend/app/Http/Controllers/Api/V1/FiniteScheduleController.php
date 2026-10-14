@@ -31,7 +31,7 @@ class FiniteScheduleController extends Controller
     public function operations(ListScheduledOperationsRequest $request): JsonResponse
     {
         $query = ScheduledOperation::committed()
-            ->with(['workOrder:id,order_no', 'line:id,name', 'workstation:id,name'])
+            ->with(SchedulePresenter::RELATIONS)
             ->orderBy('work_order_id')
             ->orderBy('sequence');
 
@@ -95,6 +95,6 @@ class FiniteScheduleController extends Controller
     {
         $updated = $this->simulations->overrideWorkstation($operation, $request->station(), $request->user());
 
-        return response()->json(['data' => $this->presenter->operation($updated->load(['workOrder:id,order_no', 'line:id,name', 'workstation:id,name']))]);
+        return response()->json(['data' => $this->presenter->operation($updated->load(SchedulePresenter::RELATIONS))]);
     }
 }

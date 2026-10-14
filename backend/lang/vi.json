@@ -7122,5 +7122,12 @@
     "Steps running on a workstation of another line than their work order: :count.": "Số bước chạy trên máy trạm thuộc dây chuyền khác với lệnh sản xuất: :count.",
     "Count available operators": "Tính số người vận hành sẵn có",
     "The workstation is not available for the whole window (shift or maintenance).": "Máy trạm không sẵn sàng trong toàn bộ khoảng thời gian này (ca làm việc hoặc bảo trì).",
-    "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.": "Công việc đã lên kế hoạch, ca làm việc, bảo trì hoặc quy tắc chuyển đổi đã thay đổi sau khi tạo lịch này. Hãy tạo lại."
+    "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.": "Công việc đã lên kế hoạch, ca làm việc, bảo trì hoặc quy tắc chuyển đổi đã thay đổi sau khi tạo lịch này. Hãy tạo lại.",
+    ":m min": ":m phút",
+    ":material: :missing :unit missing (needs :required, :available in stock)": ":material: thiếu :missing :unit (cần :required, tồn kho :available)",
+    "Plan ends": "Kế hoạch kết thúc",
+    "incl. :time changeover": "gồm :time chuyển đổi",
+    "incl. :time set-up": "gồm :time chuẩn bị",
+    "simulation ready for review": "mô phỏng chờ xem xét",
+    ":count operations committed": "đã xác nhận :count thao tác"
 }

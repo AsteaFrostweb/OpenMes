@@ -7009,5 +7009,12 @@
     "Steps running on a workstation of another line than their work order: :count.": "Steps running on a workstation of another line than their work order: :count.",
     "Count available operators": "Count available operators",
     "The workstation is not available for the whole window (shift or maintenance).": "The workstation is not available for the whole window (shift or maintenance).",
-    "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.": "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again."
+    "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.": "Planned work, shifts, maintenance or changeover rules changed after this schedule was generated. Generate it again.",
+    ":m min": ":m min",
+    ":material: :missing :unit missing (needs :required, :available in stock)": ":material: :missing :unit missing (needs :required, :available in stock)",
+    "Plan ends": "Plan ends",
+    "incl. :time changeover": "incl. :time changeover",
+    "incl. :time set-up": "incl. :time set-up",
+    "simulation ready for review": "simulation ready for review",
+    ":count operations committed": ":count operations committed"
 }
