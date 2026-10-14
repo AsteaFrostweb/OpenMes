@@ -67,6 +67,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Modules installed through the panel survive an image upgrade.** `modules/` and
+  `public/modules/` live in the image layer and the stock compose file mounts a volume over
+  `storage/` only, so `docker compose pull && up -d` deleted every uploaded module while the
+  database still listed it as enabled. The installer now keeps each module's archive in
+  `storage/app/module-packages`, and every container runs `modules:restore --publish` at start:
+  a missing module is installed again from its archive (through the same checks as an upload,
+  `requires_core` included) and the frontend of every enabled module is republished. A module
+  that updates itself can hand over its new archive with `ModuleManager::rememberPackage()`;
+  uninstalling forgets it. A module that no longer installs is reported and skipped, never fatal.
+- **Reinstalling an enabled module publishes its new frontend.** The bundle was copied to
+  `public/modules/` only by `enable()`, so an upgrade of a module that was already enabled kept
+  the old bundle — or none, after a recreated container — and every page of the module rendered
+  "Page unavailable" until someone disabled and re-enabled it.
 - **An unhandled error is written to the log again.** The exception handler counts faults for
   telemetry in a `report` callback that ended in `return false`, which Laravel reads as "handled,
   skip the default logger". Since that callback was added, a request that failed with a 500

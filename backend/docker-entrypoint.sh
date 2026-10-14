@@ -53,6 +53,15 @@ rm -f bootstrap/cache/packages.php bootstrap/cache/services.php \
       bootstrap/cache/config.php bootstrap/cache/routes-v7.php bootstrap/cache/route.php
 php artisan package:discover --ansi 2>/dev/null || true
 
+# ── Modules installed through the panel ─────────────────────────────────────
+# modules/ and public/modules/ are part of the image layer, so a recreated
+# container (any image upgrade) starts without the modules an administrator
+# installed, while the database still lists them as enabled. Their archives
+# are kept on the storage volume; put them back and republish the frontend of
+# every enabled module. Every container needs the module code (queue jobs,
+# listeners), so this is not limited to the primary. Never fatal.
+php artisan modules:restore --publish || echo "[OpenMES] Module restore failed — continuing without it."
+
 if [ "$IS_PRIMARY" = "1" ]; then
     # ── Migrations ───────────────────────────────────────────────────────────
     echo "[OpenMES] Running migrations..."
