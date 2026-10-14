@@ -160,6 +160,28 @@ class ScheduleSimulationServiceTest extends TestCase
         $this->service->apply($simulation, $this->user);
     }
 
+    public function test_an_edit_in_the_same_second_still_makes_the_draft_stale(): void
+    {
+        // The clock is frozen: updated_at cannot move past the draft's created_at.
+        $line = $this->line();
+        $order = $this->order($line, [['estimated_duration_minutes' => 60]]);
+        $simulation = $this->service->generate($this->request(), $this->user);
+
+        $order->update(['priority' => 7]);
+
+        $this->expectException(\DomainException::class);
+        $this->service->apply($simulation, $this->user);
+    }
+
+    public function test_an_untouched_draft_applies_in_the_same_second(): void
+    {
+        $order = $this->order($this->line(), [['estimated_duration_minutes' => 60]]);
+        $simulation = $this->service->generate($this->request(), $this->user);
+
+        $this->assertSame(1, $this->service->apply($simulation, $this->user)['applied']);
+        $this->assertNotNull($order->fresh()->planned_start_at);
+    }
+
     public function test_discarding_leaves_nothing_behind(): void
     {
         $line = $this->line();

@@ -91,7 +91,12 @@ class ScheduleSimulationService
         if ($orders->count() !== $operations->count()) {
             throw new \DomainException(__('Some work orders in this schedule no longer exist. Generate it again.'));
         }
-        $changed = $orders->filter(fn (WorkOrder $o) => $o->updated_at && $o->updated_at->greaterThan($simulation->created_at));
+        // Each order must still be exactly what the draft was calculated from.
+        // Drafts saved before fingerprints existed fall back to the timestamp.
+        $fingerprints = collect($simulation->summary['work_orders'] ?? [])->pluck('fingerprint', 'work_order_id');
+        $changed = $orders->filter(fn (WorkOrder $o) => $fingerprints->get($o->id) !== null
+            ? $fingerprints->get($o->id) !== $o->schedulingFingerprint()
+            : $o->updated_at && $o->updated_at->greaterThan($simulation->created_at));
         if ($changed->isNotEmpty()) {
             throw new \DomainException(__('Work orders changed after this schedule was generated (:orders). Generate it again.', [
                 'orders' => $changed->pluck('order_no')->implode(', '),

@@ -615,6 +615,7 @@ class FiniteScheduler
             'planned_start_at' => $starts !== [] ? min($starts)->toIso8601String() : null,
             'planned_end_at' => $feasible ? max($ends)->toIso8601String() : null,
             'operation_count' => count($results),
+            'fingerprint' => $order->schedulingFingerprint(),
         ];
     }
 
