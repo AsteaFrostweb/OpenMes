@@ -7,6 +7,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-14
+
 ### Added
 
 - **Finite-capacity scheduling.** Until now the planner showed overload but left every
