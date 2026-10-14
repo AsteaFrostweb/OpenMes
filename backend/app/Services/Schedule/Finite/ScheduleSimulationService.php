@@ -102,6 +102,7 @@ class ScheduleSimulationService
             $applied = 0;
             $skipped = 0;
             $warnings = [];
+            $crossLineSteps = 0;
 
             foreach ($operations as $workOrderId => $rows) {
                 $order = $orders->get($workOrderId);
@@ -112,7 +113,12 @@ class ScheduleSimulationService
                 // new ones are committed right after.
                 if ($feasible) {
                     $result = $this->planner->updateOrder($order, $this->placementFor($order, $rows), force: true);
-                    $warnings = [...$warnings, ...($result['warnings'] ?? [])];
+                    // A routing that crosses lines is what the scheduler just
+                    // planned around, so one line per step would only bury the
+                    // warnings that need attention. Those are counted instead.
+                    $crossLine = $result['cross_line_warnings'] ?? [];
+                    $crossLineSteps += count($crossLine);
+                    $warnings = [...$warnings, ...array_diff($result['warnings'] ?? [], $crossLine)];
                 }
 
                 ScheduledOperation::committed()->where('work_order_id', $workOrderId)->delete();
@@ -135,6 +141,10 @@ class ScheduleSimulationService
                 'applied_by_id' => $user->id,
                 'applied_at' => now(),
             ]);
+
+            if ($crossLineSteps > 0) {
+                $warnings[] = __('Steps running on a workstation of another line than their work order: :count.', ['count' => $crossLineSteps]);
+            }
 
             return ['applied' => $applied, 'skipped' => $skipped, 'warnings' => array_values(array_unique($warnings))];
         });
@@ -229,7 +239,7 @@ class ScheduleSimulationService
         }
 
         if ($order->line_id === null) {
-            $input['line_id'] = $rows->first()->line_id;
+            $input['line_id'] = $this->mainLine($rows);
         }
 
         // A zero-length plan (everything left is already done) is no plan.
@@ -239,6 +249,29 @@ class ScheduleSimulationService
         }
 
         return $input;
+    }
+
+    /**
+     * The line an order without one is placed on: where most of its scheduled
+     * time runs, so a routing that crosses lines lands on its main line rather
+     * than on wherever the first step happens to be. Ties go to the earlier line.
+     *
+     * @param  \Illuminate\Support\Collection<int, ScheduledOperation>  $rows
+     */
+    private function mainLine($rows): ?int
+    {
+        $minutes = [];
+        foreach ($rows->sortBy('planned_start_at') as $row) {
+            if ($row->line_id !== null) {
+                $minutes[$row->line_id] = ($minutes[$row->line_id] ?? 0)
+                    + $row->planned_start_at->diffInMinutes($row->planned_end_at);
+            }
+        }
+        if ($minutes === []) {
+            return null;
+        }
+
+        return array_search(max($minutes), $minutes, true);
     }
 
     /**

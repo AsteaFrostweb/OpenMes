@@ -107,6 +107,30 @@ class ScheduleSimulationServiceTest extends TestCase
         $this->assertNotNull($blocker->fresh()->planned_start_at);
     }
 
+    public function test_an_order_without_a_line_lands_on_the_line_carrying_most_of_its_work(): void
+    {
+        $saw = $this->line();
+        $mill = $this->line();
+        $sawStation = $this->station($saw);
+        $millStation = $this->station($mill);
+        // Starts with a short step on the saw line; the bulk runs on the mill line.
+        $order = $this->order(null, [
+            ['estimated_duration_minutes' => 15, 'workstation_id' => $sawStation->id, 'workstation_name' => $sawStation->name],
+            ['estimated_duration_minutes' => 120, 'workstation_id' => $millStation->id, 'workstation_name' => $millStation->name],
+            ['estimated_duration_minutes' => 60, 'workstation_id' => $millStation->id, 'workstation_name' => $millStation->name],
+        ]);
+
+        $result = $this->service->apply($this->service->generate($this->request(), $this->user), $this->user);
+
+        $this->assertSame($mill->id, $order->fresh()->line_id);
+        // The step on the other line is summarised, not listed one by one.
+        $this->assertContains(__('Steps running on a workstation of another line than their work order: :count.', ['count' => 1]), $result['warnings']);
+        $this->assertNotContains(
+            __('Step ":step" uses workstation ":ws" from another line.', ['step' => 'Step 1', 'ws' => $sawStation->name]),
+            $result['warnings'],
+        );
+    }
+
     public function test_infeasible_orders_keep_their_placement_but_their_reasons_are_committed(): void
     {
         $line = $this->line();

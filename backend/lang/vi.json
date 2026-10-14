@@ -7118,5 +7118,6 @@
     "No schedule has been applied yet.": "Chưa áp dụng lịch nào.",
     "No active workstations.": "Không có trạm đang hoạt động.",
     "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Số giờ kế hoạch của trạm lấy từ các lịch tự động đã áp dụng; công việc chỉ được xếp thủ công hiển thị trên trục dây chuyền.",
-    "The operation could not be moved.": "Không thể di chuyển thao tác."
+    "The operation could not be moved.": "Không thể di chuyển thao tác.",
+    "Steps running on a workstation of another line than their work order: :count.": "Số bước chạy trên máy trạm thuộc dây chuyền khác với lệnh sản xuất: :count."
 }
