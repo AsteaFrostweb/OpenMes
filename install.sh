@@ -207,6 +207,14 @@ DB_PASSWORD="${DB_PASSWORD:-$(gen_pass)}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(gen_pass)}"
 # Keep any existing key, prefixed or not (Laravel accepts both): rotating it
 # logs everyone out and makes anything already encrypted with it unreadable.
+# An install older than this script writing APP_KEY has no key here, but its
+# running backend has one, and everything encrypted so far (webhook secrets,
+# integration credentials) is readable only with that key. Adopt it instead of
+# minting a new one.
+if [ -z "$APP_KEY" ] && [ "$REUSE_ENV" = "1" ]; then
+    APP_KEY="$(docker compose exec -T backend sh -c 'grep "^APP_KEY=base64:" .env | head -n1 | cut -d= -f2-' 2>/dev/null | tr -d '\r')"
+    [ -n "$APP_KEY" ] && ok "Kept the encryption key of the running installation"
+fi
 if [ -z "$APP_KEY" ]; then APP_KEY="$(gen_app_key)"; fi
 
 # Unique compose project + container-name prefix per install, so several local

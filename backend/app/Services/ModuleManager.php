@@ -12,9 +12,21 @@ class ModuleManager
 
     protected string $settingsKey = 'modules_enabled';
 
+    /**
+     * Where the archive of every module installed through the panel is kept.
+     *
+     * modules/ lives in the image layer — the stock compose file mounts a
+     * volume over storage/ only — so recreating the container (any image
+     * upgrade) deleted every module an administrator had installed, while
+     * the database still listed it as enabled. storage/ survives, so the
+     * archive kept here is what restore() puts back.
+     */
+    protected string $packagesPath;
+
     public function __construct()
     {
         $this->modulesPath = base_path('modules');
+        $this->packagesPath = storage_path('app/module-packages');
     }
 
     /**
@@ -338,7 +350,82 @@ class ModuleManager
             $zip->close();
         }
 
+        $this->rememberPackage($moduleName, $zipPath);
+
+        // Reinstalling a module that is already enabled — an upgrade — never
+        // reaches enable(), the only place the frontend was published, so the
+        // browser kept the previous version's bundle (or none at all, after
+        // the container was recreated) and every page of the module rendered
+        // "Page unavailable" until someone disabled and re-enabled it.
+        if (in_array($moduleName, $this->enabledNames(), true)) {
+            $this->publishAssets($moduleName);
+        }
+
         return $moduleName;
+    }
+
+    /**
+     * Keep the archive a module was installed from, so restore() can put the
+     * module back after the container is recreated.
+     *
+     * Public so a module that updates itself in place can hand over the
+     * archive it installed — otherwise a restore would bring back the version
+     * the administrator first uploaded.
+     */
+    public function rememberPackage(string $name, string $zipPath): void
+    {
+        if (! preg_match('/^[A-Za-z0-9_-]+$/', $name) || ! is_file($zipPath)) {
+            return;
+        }
+
+        if (! is_dir($this->packagesPath)) {
+            mkdir($this->packagesPath, 0755, true);
+        }
+
+        $target = "{$this->packagesPath}/{$name}.zip";
+
+        if (realpath($zipPath) === realpath($target)) {
+            return;
+        }
+
+        // Copy then rename, so a crash mid-copy never leaves a truncated
+        // archive where restore() would find it.
+        $tmp = $target.'.tmp';
+        if (@copy($zipPath, $tmp)) {
+            rename($tmp, $target);
+        }
+    }
+
+    /**
+     * Put back every module whose directory is gone but whose archive was kept.
+     *
+     * Runs at container start (`modules:restore`). A module that is present is
+     * left alone — it may have been updated in place since. Each archive goes
+     * through installFromZip() again, so a restored module passes the same
+     * checks as an uploaded one, requires_core included.
+     *
+     * @return array{restored: list<string>, failed: array<string, string>}
+     */
+    public function restore(): array
+    {
+        $result = ['restored' => [], 'failed' => []];
+
+        foreach (glob("{$this->packagesPath}/*.zip") ?: [] as $package) {
+            $name = basename($package, '.zip');
+
+            if (is_dir("{$this->modulesPath}/{$name}")) {
+                continue;
+            }
+
+            try {
+                $this->installFromZip($package);
+                $result['restored'][] = $name;
+            } catch (\Throwable $e) {
+                $result['failed'][$name] = $e->getMessage();
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -364,6 +451,9 @@ class ModuleManager
         if (is_dir($dir)) {
             $this->deleteDirectory($dir);
         }
+
+        // Otherwise the next container start would install it again.
+        @unlink("{$this->packagesPath}/{$name}.zip");
     }
 
     /**
