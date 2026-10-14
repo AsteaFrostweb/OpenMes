@@ -84,7 +84,14 @@ export function Toolbar({ ctx, view, setView, lineFilter, setLineFilter, live, o
 // Human summary of one logged edit, from its before/after snapshots.
 function changeSummary(c, allLines) {
     const code = (id) => allLines.find((l) => l.id === id)?.code ?? '?';
-    const slot = (s) => (s.line_id ? `${code(s.line_id)} ${s.due_date ?? ''}${s.shift_number ? ' S' + s.shift_number : ''}`.trim() : __('Backlog'));
+    const t = (x) => (x ? `${x.slice(0, 10)} ${x.slice(11, 16)}` : __('End not planned'));
+    // A minute-planned order sits where its plan starts; its due date is the
+    // deadline, not the slot (automatic scheduling never moves it).
+    const slot = (s) => {
+        if (!s.line_id) return __('Backlog');
+        if (s.planned_start_at) return `${code(s.line_id)} ${t(s.planned_start_at)}`;
+        return `${code(s.line_id)} ${s.due_date ?? ''}${s.shift_number ? ' S' + s.shift_number : ''}`.trim();
+    };
     const b = c.before || {}; const a = c.after || {};
     const parts = [];
     const primaryChanged = ['line_id', 'due_date', 'shift_number', 'end_date', 'end_shift_number'].some((k) => (b[k] ?? null) !== (a[k] ?? null));
@@ -94,7 +101,6 @@ function changeSummary(c, allLines) {
     (a.placements || []).forEach((p) => { if (!bp.includes(key(p))) parts.push(<span className="inline-flex items-center gap-1"><Icon name="plus" size={12} />{code(p.line_id)} {p.due_date}</span>); });
     (b.placements || []).forEach((p) => { if (!ap.includes(key(p))) parts.push(<span className="inline-flex items-center gap-1"><Icon name="minus" size={12} />{code(p.line_id)} {p.due_date}</span>); });
     if (!parts.length && ((b.planned_start_at ?? '') !== (a.planned_start_at ?? '') || (b.planned_end_at ?? '') !== (a.planned_end_at ?? ''))) {
-        const t = (x) => (x ? `${x.slice(0, 10)} ${x.slice(11, 16)}` : __('End not planned'));
         parts.push(<span className="inline-flex flex-wrap items-center gap-2"><span>{t(b.planned_start_at)} · {t(b.planned_end_at)}</span><Icon name="arrow-right" size={14} /><span>{t(a.planned_start_at)} · {t(a.planned_end_at)}</span></span>);
     }
     return parts.length ? parts.map((part, index) => <span key={index} className="inline-flex items-center gap-2">{part}</span>) : __('updated');
