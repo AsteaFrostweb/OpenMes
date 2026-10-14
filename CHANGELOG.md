@@ -7,6 +7,40 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.26.1] - 2026-10-14
+
+### Fixed
+
+- **The backend keeps one encryption key across upgrades.** `docker-compose.yml` passed
+  `APP_KEY` to every service except `backend`, so the backend made up its own key inside the
+  container — and a recreated container (every image upgrade) made up another. Everything
+  encrypted under the old one became unreadable: webhook secrets (the webhook form failed with
+  a 500, "The MAC is invalid"), integration credentials, every session. The queue worker had the
+  host key meanwhile, so it could not read what the backend encrypted even without an upgrade.
+  The backend now gets the host's `APP_KEY` like the rest. Without one (an install older than the
+  installers writing it, or a hand-made compose file) the entrypoint generates a key once and
+  keeps it on the storage volume (`storage/app/.app_key`) instead of a new one per start.
+
+  **Upgrading an existing install:** run `install.sh` / `install.ps1` again — it now takes the
+  key from the running backend when `.env` has none. If you upgrade with `docker compose` instead,
+  copy the running backend's key into `.env` first, or secrets saved since the last upgrade are
+  lost once more:
+  `docker compose exec backend grep '^APP_KEY=' .env` → paste that line into the `.env` next to
+  `docker-compose.yml`, replacing its `APP_KEY`.
+- **Modules installed through the panel survive an image upgrade.** `modules/` and
+  `public/modules/` live in the image layer and the stock compose file mounts a volume over
+  `storage/` only, so `docker compose pull && up -d` deleted every uploaded module while the
+  database still listed it as enabled. The installer now keeps each module's archive in
+  `storage/app/module-packages`, and every container runs `modules:restore --publish` at start:
+  a missing module is installed again from its archive (through the same checks as an upload,
+  `requires_core` included) and the frontend of every enabled module is republished. A module
+  that updates itself can hand over its new archive with `ModuleManager::rememberPackage()`;
+  uninstalling forgets it. A module that no longer installs is reported and skipped, never fatal.
+- **Reinstalling an enabled module publishes its new frontend.** The bundle was copied to
+  `public/modules/` only by `enable()`, so an upgrade of a module that was already enabled kept
+  the old bundle — or none, after a recreated container — and every page of the module rendered
+  "Page unavailable" until someone disabled and re-enabled it.
+
 ## [0.26.0] - 2026-10-13
 
 ### Added
