@@ -195,6 +195,16 @@ if (-not $dbPassword)    { $dbPassword    = New-Password }
 if (-not $adminPassword) { $adminPassword = New-Password }
 # Keep any existing key, prefixed or not (Laravel accepts both): rotating it
 # logs everyone out and makes anything already encrypted with it unreadable.
+# An install older than this script writing APP_KEY has no key here, but its
+# running backend has one, and everything encrypted so far is readable only with
+# that key. Adopt it instead of minting a new one.
+if (-not $appKey -and $reuseEnv) {
+    $running = (docker compose exec -T backend sh -c 'grep "^APP_KEY=base64:" .env | head -n1 | cut -d= -f2-' 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $running) {
+        $appKey = ($running | Select-Object -First 1).Trim()
+        Write-Ok 'Kept the encryption key of the running installation'
+    }
+}
 if (-not $appKey) { $appKey = New-AppKey }
 
 # Unique compose project + container-name prefix per install. Compose names

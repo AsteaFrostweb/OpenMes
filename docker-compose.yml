@@ -58,6 +58,11 @@ services:
       # Without this passthrough a Docker install is stuck on UTC.
       APP_TIMEZONE: ${APP_TIMEZONE:-UTC}
       APP_DEBUG: ${APP_DEBUG:-false}
+      # The key every service encrypts with — sessions, webhook secrets, integration
+      # credentials. It has to be the host's .env value: a key the container makes
+      # up for itself lives in the image layer and is gone on the next recreate,
+      # along with everything encrypted under it.
+      APP_KEY: ${APP_KEY}
       APP_URL: ${APP_URL:-http://localhost}
       # Sanctum SPA stateful hosts. Empty by default (production derives them
       # from APP_URL). Set this when serving on a host:port the app URL doesn't
