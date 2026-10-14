@@ -39,6 +39,8 @@ class ModuleUploadTest extends TestCase
             {
                 parent::__construct();
                 $this->modulesPath = $path;
+                // Kept archives go to the scratch tree too, not the real storage/.
+                $this->packagesPath = $path.'/.packages';
             }
         });
 
