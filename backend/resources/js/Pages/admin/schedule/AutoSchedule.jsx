@@ -58,6 +58,7 @@ const hours = (minutes) => (minutes == null ? '—' : `${Math.round((minutes / 6
 function StationCell({ op, stationsByType, canDecide }) {
     const options = op.workstation_type_id ? stationsByType[op.workstation_type_id] ?? [] : [];
     const [value, setValue] = useState(op.workstation_id ? String(op.workstation_id) : '');
+    const [error, setError] = useState(null);
 
     const label = op.workstation_name ?? op.line_name ?? '—';
     const source = {
@@ -76,29 +77,40 @@ function StationCell({ op, stationsByType, canDecide }) {
         );
     }
 
+    // A refused move (station busy in this window, wrong class) comes back as a
+    // validation error. Keep this cell's state through that visit so the reason
+    // shows next to the select instead of the choice silently snapping back.
     const save = (next) => {
         setValue(next);
+        setError(null);
         if (next && next !== String(op.workstation_id)) {
             router.put(`/admin/schedule/operations/${op.id}`, { workstation_id: next }, {
                 preserveScroll: true,
-                onError: () => setValue(op.workstation_id ? String(op.workstation_id) : ''),
+                preserveState: 'errors',
+                onError: (errors) => {
+                    setValue(op.workstation_id ? String(op.workstation_id) : '');
+                    setError(errors.workstation_id ?? __('The operation could not be moved.'));
+                },
             });
         }
     };
 
     return (
-        <span className="inline-flex items-center gap-1">
-            <select
-                value={value}
-                onChange={(e) => save(e.target.value)}
-                aria-label={__('Workstation for :order step :step', { order: op.order_no, step: op.step_number })}
-                className="text-xs border border-om-line rounded-om-sm px-1.5 py-0.5 bg-om-panel max-w-[180px]"
-            >
-                {options.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}{s.line_name ? ` · ${s.line_name}` : ''}</option>
-                ))}
-            </select>
-            {source && <span className="text-om-muted text-[10px]">{source}</span>}
+        <span className="inline-flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1">
+                <select
+                    value={value}
+                    onChange={(e) => save(e.target.value)}
+                    aria-label={__('Workstation for :order step :step', { order: op.order_no, step: op.step_number })}
+                    className="text-xs border border-om-line rounded-om-sm px-1.5 py-0.5 bg-om-panel max-w-[180px]"
+                >
+                    {options.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}{s.line_name ? ` · ${s.line_name}` : ''}</option>
+                    ))}
+                </select>
+                {source && <span className="text-om-muted text-[10px]">{source}</span>}
+            </span>
+            {error && <span role="alert" className="text-[11px] text-om-blocked">{error}</span>}
         </span>
     );
 }

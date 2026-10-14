@@ -7004,5 +7004,6 @@
     "Operations of active work orders from applied schedules. Moving an order by hand on the planner removes its rows here; the next simulation works around its new time plan.": "Operations of active work orders from applied schedules. Moving an order by hand on the planner removes its rows here; the next simulation works around its new time plan.",
     "No schedule has been applied yet.": "No schedule has been applied yet.",
     "No active workstations.": "No active workstations.",
-    "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis."
+    "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.",
+    "The operation could not be moved.": "The operation could not be moved."
 }

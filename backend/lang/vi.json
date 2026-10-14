@@ -7117,5 +7117,6 @@
     "Operations of active work orders from applied schedules. Moving an order by hand on the planner removes its rows here; the next simulation works around its new time plan.": "Thao tác của các lệnh đang hoạt động từ các lịch đã áp dụng. Di chuyển lệnh thủ công trên bảng kế hoạch sẽ xóa các dòng của nó ở đây; lần mô phỏng tiếp theo sẽ tính theo kế hoạch thời gian mới.",
     "No schedule has been applied yet.": "Chưa áp dụng lịch nào.",
     "No active workstations.": "Không có trạm đang hoạt động.",
-    "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Số giờ kế hoạch của trạm lấy từ các lịch tự động đã áp dụng; công việc chỉ được xếp thủ công hiển thị trên trục dây chuyền."
+    "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Số giờ kế hoạch của trạm lấy từ các lịch tự động đã áp dụng; công việc chỉ được xếp thủ công hiển thị trên trục dây chuyền.",
+    "The operation could not be moved.": "Không thể di chuyển thao tác."
 }
