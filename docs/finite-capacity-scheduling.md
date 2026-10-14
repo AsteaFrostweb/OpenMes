@@ -189,7 +189,9 @@ reserved.
 4. **Discard**: removes the draft and leaves the committed schedule untouched.
 
 A Supervisor/Admin can move a scheduled operation to another active workstation
-of the same equipment class. Such overrides are audited.
+of the same equipment class. The new station must be free of other operations
+and offer the same working time in the operation's window (its line's shifts,
+less line and station maintenance). Such overrides are audited.
 
 Moving an order by hand on the planner drops its committed operations. The next
 run then works around its new minute plan.

@@ -7007,5 +7007,6 @@
     "Credentials": "Dane uwierzytelniające",
     "The operation could not be moved.": "Nie udało się przenieść operacji.",
     "Steps running on a workstation of another line than their work order: :count.": "Kroki wykonywane na stanowisku innej linii niż linia zlecenia: :count.",
-    "Count available operators": "Uwzględniaj dostępnych operatorów"
+    "Count available operators": "Uwzględniaj dostępnych operatorów",
+    "The workstation is not available for the whole window (shift or maintenance).": "Stanowisko nie jest dostępne przez cały ten przedział czasu (zmiana lub konserwacja)."
 }

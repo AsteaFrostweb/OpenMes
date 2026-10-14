@@ -191,6 +191,20 @@ class ScheduleSimulationService
             throw ValidationException::withMessages(['workstation_id' => __('The workstation is already booked in this window.')]);
         }
 
+        // The window was fitted to the old station's shifts and maintenance; the
+        // new one must offer the same working time in it, or the operation
+        // would run through its maintenance or outside its line's shifts.
+        $calendar = ResourceCalendar::forHorizon($operation->planned_start_at, $operation->planned_end_at);
+        $from = ResourceCalendar::toMinutes($operation->planned_start_at);
+        $to = ResourceCalendar::toMinutes($operation->planned_end_at);
+        $needed = $operation->line_id
+            ? ResourceCalendar::workingMinutesBetween($calendar->windows((int) $operation->line_id, $operation->workstation_id), $from, $to)
+            : 0;
+        $offered = ResourceCalendar::workingMinutesBetween($calendar->windows((int) $station->line_id, $station->id), $from, $to);
+        if ($offered < $needed) {
+            throw ValidationException::withMessages(['workstation_id' => __('The workstation is not available for the whole window (shift or maintenance).')]);
+        }
+
         return DB::transaction(function () use ($operation, $station, $user) {
             $operation->update([
                 'workstation_id' => $station->id,

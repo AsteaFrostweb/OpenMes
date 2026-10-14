@@ -7007,5 +7007,6 @@
     "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.": "Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.",
     "The operation could not be moved.": "The operation could not be moved.",
     "Steps running on a workstation of another line than their work order: :count.": "Steps running on a workstation of another line than their work order: :count.",
-    "Count available operators": "Count available operators"
+    "Count available operators": "Count available operators",
+    "The workstation is not available for the whole window (shift or maintenance).": "The workstation is not available for the whole window (shift or maintenance)."
 }

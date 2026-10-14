@@ -237,4 +237,28 @@ class ScheduleSimulationServiceTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->service->overrideWorkstation($opB, $opA->workstation, $this->user);
     }
+
+    public function test_override_refuses_a_station_under_maintenance_in_the_window(): void
+    {
+        $line = $this->line();
+        $type = WorkstationType::factory()->create();
+        $this->station($line, $type);
+        $this->station($line, $type);
+        $order = $this->order($line, [['estimated_duration_minutes' => 60, 'workstation_type_id' => $type->id]]);
+        $op = $this->service->generate($this->request(), $this->user)->operations()->where('work_order_id', $order->id)->first();
+        $other = \App\Models\Workstation::where('workstation_type_id', $type->id)->where('id', '!=', $op->workstation_id)->first();
+        \App\Models\MaintenanceEvent::create([
+            'title' => 'PM', 'event_type' => \App\Models\MaintenanceEvent::TYPE_PLANNED, 'status' => \App\Models\MaintenanceEvent::STATUS_PENDING,
+            'line_id' => $line->id, 'workstation_id' => $other->id,
+            'scheduled_at' => $op->planned_start_at, 'scheduled_end_at' => $op->planned_end_at,
+        ]);
+
+        try {
+            $this->service->overrideWorkstation($op, $other, $this->user);
+            $this->fail('The override should have been refused.');
+        } catch (ValidationException $e) {
+            $this->assertSame(__('The workstation is not available for the whole window (shift or maintenance).'), $e->errors()['workstation_id'][0]);
+        }
+        $this->assertNotSame($other->id, $op->fresh()->workstation_id);
+    }
 }
