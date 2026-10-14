@@ -7,6 +7,11 @@ generated plan.
 
 Open it from **Schedule → Planner → Automatic scheduling** (`/admin/schedule/auto`).
 
+The screens sit under the **Schedule** tab of the admin panel. An Admin has it;
+a Supervisor gets it only once it is granted in **Settings → Access matrix**
+(by default a Supervisor sees just the order screens). The same applies to the
+planner board itself.
+
 ## Effective planning capacity
 
 Each line has a **planning efficiency (%)**, editable on the line form. The
@@ -26,6 +31,13 @@ workstation axis compares each station's effective capacity (its line's shifts
 minus line and station maintenance, × the line's efficiency) with the operations
 committed on it by applied automatic schedules. Work that was only ever placed
 by hand has no operations, so it shows on the line axis and not here.
+
+On the line and crew axes, an order the scheduler placed counts by its
+committed operations: each step loads the line of the station that runs it, as
+standard work (the working time it occupies × the line's efficiency). Its
+overall time window is not counted, because after automatic scheduling it
+also spans steps on other lines and the waits between them. An order placed
+only by hand still counts by its time window on its own line.
 
 Planning efficiency is deliberately **not OEE**. Calendar capacity already
 removes the availability losses OpenMES knows about. Multiplying by a full OEE
@@ -144,7 +156,9 @@ reserved.
    horizon, and every operation with its reasons.
 3. **Apply** (Supervisor/Admin):
    - Each fully schedulable order gets its new `planned_start_at` /
-     `planned_end_at`, and a line if it had none. These are written through the
+     `planned_end_at`, and a line if it had none: the line where most of its
+     scheduled time runs. Steps on another line's workstations are reported
+     as one count. These are written through the
      planner's own update path, so the change log, undo, `WorkOrderScheduled`
      and the audit trail work as they do for a drag on the board.
    - `due_date` is never changed.
