@@ -23,7 +23,7 @@ export default function ChangeoverRulesIndex() {
 
     const columns = [
         { key: 'name', label: __('Name'), className: 'font-medium text-om-ink', filter: 'text' },
-        { key: 'attribute', label: __('Compare by'), className: 'text-om-muted', value: (r) => attributeLabels[r.attribute] ?? r.attribute },
+        { key: 'attribute', label: __('Compare by'), className: 'text-om-muted', value: (r) => attributeLabels[r.attribute] ?? r.attribute, render: (r) => attributeLabels[r.attribute] ?? r.attribute },
         {
             key: 'transition',
             label: __('Transition'),
@@ -37,7 +37,7 @@ export default function ChangeoverRulesIndex() {
             ),
         },
         { key: 'setup_minutes', label: __('Setup time (min)'), align: 'right' },
-        { key: 'scope', label: __('Applies to'), className: 'text-om-muted', value: scope },
+        { key: 'scope', label: __('Applies to'), className: 'text-om-muted', value: scope, render: scope },
         { key: 'is_active', label: __('Status'), value: (r) => __(r.is_active ? 'Active' : 'Inactive'), render: (r) => <ActiveBadge active={r.is_active} /> },
     ];
 
