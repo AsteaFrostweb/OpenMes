@@ -9,6 +9,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **The backend keeps one encryption key across upgrades.** `docker-compose.yml` passed
+  `APP_KEY` to every service except `backend`, so the backend made up its own key inside the
+  container — and a recreated container (every image upgrade) made up another. Everything
+  encrypted under the old one became unreadable: webhook secrets (the webhook form failed with
+  a 500, "The MAC is invalid"), integration credentials, every session. The queue worker had the
+  host key meanwhile, so it could not read what the backend encrypted even without an upgrade.
+  The backend now gets the host's `APP_KEY` like the rest. Without one (an install older than the
+  installers writing it, or a hand-made compose file) the entrypoint generates a key once and
+  keeps it on the storage volume (`storage/app/.app_key`) instead of a new one per start.
+
+  **Upgrading an existing install:** run `install.sh` / `install.ps1` again — it now takes the
+  key from the running backend when `.env` has none. If you upgrade with `docker compose` instead,
+  copy the running backend's key into `.env` first, or secrets saved since the last upgrade are
+  lost once more:
+  `docker compose exec backend grep '^APP_KEY=' .env` → paste that line into the `.env` next to
+  `docker-compose.yml`, replacing its `APP_KEY`.
 - **Modules installed through the panel survive an image upgrade.** `modules/` and
   `public/modules/` live in the image layer and the stock compose file mounts a volume over
   `storage/` only, so `docker compose pull && up -d` deleted every uploaded module while the

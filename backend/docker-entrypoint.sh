@@ -21,7 +21,7 @@ fi
 # Docker Compose passes the real values via environment variables, but
 # config:cache reads from the .env file.  Sync important vars so the
 # cached config uses the correct credentials.
-for VAR in APP_ENV APP_DEBUG APP_URL QUEUE_CONNECTION DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD BROADCAST_CONNECTION REVERB_APP_ID REVERB_APP_KEY REVERB_APP_SECRET REVERB_HOST REVERB_PORT REVERB_SCHEME REVERB_SERVER_HOST REVERB_SERVER_PORT; do
+for VAR in APP_KEY APP_ENV APP_DEBUG APP_URL QUEUE_CONNECTION DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD BROADCAST_CONNECTION REVERB_APP_ID REVERB_APP_KEY REVERB_APP_SECRET REVERB_HOST REVERB_PORT REVERB_SCHEME REVERB_SERVER_HOST REVERB_SERVER_PORT; do
     eval VAL=\$$VAR
     if [ -n "$VAL" ]; then
         if grep -q "^${VAR}=" .env; then
@@ -32,15 +32,35 @@ for VAR in APP_ENV APP_DEBUG APP_URL QUEUE_CONNECTION DB_CONNECTION DB_HOST DB_P
     fi
 done
 
-if ! grep -q "APP_KEY=base64:" .env; then
-    echo "[OpenMES] Generating APP_KEY..."
-    NEW_KEY="base64:$(php -r 'echo base64_encode(random_bytes(32));')"
-    if grep -q "^APP_KEY=" .env; then
-        sed -i "s|^APP_KEY=.*|APP_KEY=$NEW_KEY|" .env
-    else
-        echo "APP_KEY=$NEW_KEY" >> .env
+# No APP_KEY from compose (an install older than the installers writing one, or
+# a hand-made compose file): keep ONE key on the storage volume instead of making
+# a new one in the image layer on every start. A fresh key per start logged
+# everyone out and made every encrypted value (webhook secrets, integration
+# credentials) unreadable after each upgrade. Sidecars may start together, so the
+# file is created atomically and whoever loses the race reads the winner's key.
+if [ -z "$APP_KEY" ]; then
+    KEY_FILE=storage/app/.app_key
+    if [ ! -s "$KEY_FILE" ]; then
+        mkdir -p storage/app
+        TMP_KEY="$KEY_FILE.$$"
+        echo "base64:$(php -r 'echo base64_encode(random_bytes(32));')" > "$TMP_KEY"
+        chmod 600 "$TMP_KEY"
+        # ln fails when another container got there first — then keep theirs,
+        # unless what is there is empty.
+        if ! ln "$TMP_KEY" "$KEY_FILE" 2>/dev/null && [ ! -s "$KEY_FILE" ]; then
+            mv -f "$TMP_KEY" "$KEY_FILE"
+        fi
+        rm -f "$TMP_KEY"
+        echo "[OpenMES] No APP_KEY in the environment — generated one and kept it in $KEY_FILE."
+        echo "[OpenMES] Put the same value as APP_KEY in the .env next to docker-compose.yml to share it with every service."
     fi
-    echo "[OpenMES] APP_KEY set successfully."
+    APP_KEY="$(cat "$KEY_FILE")"
+    if grep -q "^APP_KEY=" .env; then
+        sed -i "s|^APP_KEY=.*|APP_KEY=$APP_KEY|" .env
+    else
+        echo "APP_KEY=$APP_KEY" >> .env
+    fi
+    export APP_KEY
 fi
 
 # ── Clear stale bootstrap cache ─────────────────────────────────────────────
