@@ -31,6 +31,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
   beside effective capacity. Drag & drop is unchanged. See
   `docs/finite-capacity-scheduling.md`.
 
+## [0.26.1] - 2026-10-14
+
 ### Fixed
 
 - **The backend keeps one encryption key across upgrades.** `docker-compose.yml` passed
