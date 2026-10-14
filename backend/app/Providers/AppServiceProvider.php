@@ -52,6 +52,15 @@ class AppServiceProvider extends ServiceProvider
             \App\Extension\Contracts\WorkforceProvider::class,
             \App\Extension\Contracts\Null\NullWorkforceProvider::class,
         );
+        // Operator and qualified-operator counts for finite-capacity scheduling.
+        // Its own contract so existing WorkforceProvider implementations keep
+        // loading. Core counts the workers assigned to each line (less absences
+        // the WorkforceProvider reports); a line nobody is assigned to stays
+        // machine-constrained only. A workforce module may bind its own.
+        $this->app->bind(
+            \App\Extension\Contracts\WorkforceCapacityProvider::class,
+            \App\Services\Schedule\Finite\AssignedStaffCapacityProvider::class,
+        );
         // Request-scoped tenant for headless (API-key) contexts. Set per request
         // by AuthenticateApiKey; falls through to null for user-authenticated
         // requests, which resolve the tenant from the logged-in user instead.
@@ -172,6 +181,8 @@ class AppServiceProvider extends ServiceProvider
         // WorkOrderCreated/Updated/Completed and StepStarted/Completed real on every
         // save path; BatchCreated is fired via Batch::$dispatchesEvents.
         \App\Models\WorkOrder::observe(\App\Observers\WorkOrderEventObserver::class);
+        // A hand-moved order's committed operation plan no longer describes it.
+        \App\Models\WorkOrder::observe(\App\Observers\ScheduledOperationInvalidationObserver::class);
         \App\Models\BatchStep::observe(\App\Observers\BatchStepEventObserver::class);
         // Extra segments live in their own table, so a segment-only planner edit
         // changes no work_orders column — watch them for the schedule hook too.

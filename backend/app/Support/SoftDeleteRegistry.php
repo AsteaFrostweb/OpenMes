@@ -34,6 +34,7 @@ class SoftDeleteRegistry
         'integration_configs' => Models\IntegrationConfig::class,
         'csv_import_mappings' => Models\CsvImportMapping::class,
         'shifts' => Models\Shift::class,
+        'changeover_rules' => Models\ChangeoverRule::class,
         'inspection_plans' => Models\InspectionPlan::class,
         'priority_rules' => Models\PriorityRule::class,
         'product_revisions' => Models\ProductRevision::class,

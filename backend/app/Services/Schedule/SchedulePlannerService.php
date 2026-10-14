@@ -394,9 +394,16 @@ class SchedulePlannerService
 
         $this->logChange($workOrder, $snapshotBefore);
 
+        // Batch preparation may write the snapshot the cross-line check reads.
+        $batchWarnings = $this->prepareBatchAndWarn($workOrder);
+        $crossLine = $this->crossLineWarnings($workOrder);
+
         return [
             'conflict' => false,
-            'warnings' => $this->prepareBatchAndWarn($workOrder),
+            'warnings' => [...$batchWarnings, ...$crossLine],
+            // The subset above about steps on other lines' workstations, so a
+            // caller placing many orders at once can summarise them.
+            'cross_line_warnings' => $crossLine,
         ];
     }
 
@@ -673,7 +680,19 @@ class SchedulePlannerService
             $warnings[] = __('Scheduled, but the batch could not be prepared automatically: :msg', ['msg' => $e->getMessage()]);
         }
 
-        // Warn about cross-line workstations
+        return $warnings;
+    }
+
+    /**
+     * One warning per routing step whose workstation belongs to another line
+     * than the order's.
+     *
+     * @return array<string>
+     */
+    private function crossLineWarnings(WorkOrder $workOrder): array
+    {
+        $warnings = [];
+
         if ($workOrder->line_id && ! empty($workOrder->process_snapshot)) {
             $lineWorkstationIds = Workstation::where('line_id', $workOrder->line_id)->pluck('id')->toArray();
             foreach ($workOrder->process_snapshot['steps'] ?? [] as $step) {

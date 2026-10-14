@@ -11,6 +11,14 @@ class StoreLineRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        // A cleared efficiency field means "no derating", not "no capacity".
+        if ($this->exists('planning_efficiency_pct') && blank($this->input('planning_efficiency_pct'))) {
+            $this->merge(['planning_efficiency_pct' => 100]);
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -23,6 +31,8 @@ class StoreLineRequest extends FormRequest
             // is prohibited rather than unvalidated.
             'division_id' => ['nullable', 'integer', \App\Models\Line::hasModuleRelation('division') ? 'exists:divisions,id' : 'prohibited'],
             'is_active' => ['nullable', 'boolean'],
+            // Share of calendar capacity planning may load (100 = all of it).
+            'planning_efficiency_pct' => ['nullable', 'numeric', 'min:1', 'max:100'],
         ];
     }
 }

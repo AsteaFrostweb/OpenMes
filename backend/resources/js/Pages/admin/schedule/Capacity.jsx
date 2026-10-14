@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Button, Dropdown, Icon, SegmentedControl } from '@openmes/ui';
 import AppLayout from '../../../layouts/AppLayout';
+import AppDatePicker from '../../../components/AppDatePicker';
 import DueCountdown from '../../../components/DueCountdown';
+import PageTrail from '../../../components/PageTrail';
 import { __ } from '../../../lib/i18n';
 import { loadBarClass, loadPercClass } from '../../../lib/load';
 import { apiCall, apiGet } from '../../../lib/http';
+
+const NAV_LINK = 'inline-flex items-center gap-2 rounded-om-sm border border-om-line px-3 py-2 text-xs font-semibold text-om-ink hover:bg-om-chip';
 
 // ─── Drill-down row: a single work order with inline reschedule ──────────────
 
@@ -64,39 +69,28 @@ function OrderRow({ order, lines, onSaved }) {
                 </div>
             ) : (
                 <div className="flex items-end gap-2 flex-wrap">
-                    <label className="text-[10px] text-om-muted">
-                        {__('Line')}
-                        <select
-                            value={lineId}
-                            onChange={(e) => setLineId(e.target.value)}
-                            className="block mt-0.5 text-xs border border-om-line rounded-om-sm px-1.5 py-1 bg-om-panel"
-                        >
-                            {lines.map((l) => (
-                                <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                        </select>
-                    </label>
+                    <div className="min-w-[160px]">
+                        <div className="mb-1 text-[10px] text-om-muted">{__('Line')}</div>
+                        <Dropdown
+                            size="sm"
+                            className="w-full"
+                            options={lines.map((l) => ({ value: String(l.id), label: l.name }))}
+                            value={String(lineId)}
+                            onChange={setLineId}
+                            aria-label={__('Line')}
+                        />
+                    </div>
                     <label className="text-[10px] text-om-muted">
                         {/* The countdown reads the value being edited, not the
                             saved one, so a date typed here answers "how much room
                             does that leave?" before Move is pressed. */}
                         {__('Due date')}
                         {dueDate && <DueCountdown due={dueDate} className="ml-1.5" />}
-                        <input
-                            type="date"
-                            value={dueDate ?? ''}
-                            onChange={(e) => setDueDate(e.target.value)}
-                            className="block mt-0.5 text-xs border border-om-line rounded-om-sm px-1.5 py-1 bg-om-panel"
-                        />
+                        <AppDatePicker className="mt-1 w-[170px]" value={dueDate || null} onChange={(d) => setDueDate(d ?? '')} aria-label={__('Due date')} />
                     </label>
-                    <button
-                        type="button"
-                        disabled={!dirty || saving}
-                        onClick={save}
-                        className={`text-xs px-2 py-1 rounded-om-sm ${dirty && !saving ? 'bg-om-ink text-om-on-ink' : 'bg-om-line2 text-om-muted'}`}
-                    >
+                    <Button size="sm" disabled={!dirty || saving} onClick={save}>
                         {saving ? __('Saving…') : __('Move')}
-                    </button>
+                    </Button>
                 </div>
             )}
             {error && <div className="text-[11px] text-om-blocked">{error}</div>}
@@ -146,42 +140,59 @@ export default function Capacity() {
         router.reload({ only: ['grid'] });
     };
 
-    const resourceLabel = axis === 'crew' ? __('Crew') : __('Line');
-    const emptyText = axis === 'crew' ? __('No active crews.') : __('No active lines.');
+    const resourceLabel = { crew: __('Crew'), workstation: __('Workstation') }[axis] ?? __('Line');
+    const emptyText = { crew: __('No active crews.'), workstation: __('No active workstations.') }[axis] ?? __('No active lines.');
+    const axisHint = {
+        line: __('Click a cell to see and reschedule its work orders.'),
+        crew: __('Crew planned hours are the labor demand of the lines each crew staffs.'),
+        workstation: __('Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.'),
+    }[axis];
 
     return (
         <AppLayout>
             <Head title={__('Schedule Capacity')} />
+            <PageTrail append={[{ label: __('Capacity') }]} />
 
-            <div className="p-4 space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-lg font-bold text-om-ink">{__('Schedule Capacity')}</h1>
-                        <Link href="/admin/schedule" className="text-xs text-om-accent hover:underline">
-                            {__('Planner')} &rarr;
-                        </Link>
+            <div className="p-4 sm:p-6 space-y-4">
+                {/* Header — same anatomy as the planner and automatic scheduling */}
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-om-faint">
+                            {__('Schedule')} · {{ line: __('Line'), crew: __('Crew'), workstation: __('Workstation') }[axis]}
+                        </div>
+                        <h2 className="m-0 text-[24px] font-semibold tracking-[-0.022em] text-om-ink">{__('Schedule Capacity')}</h2>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Link href="/admin/schedule" className={NAV_LINK}><Icon name="calendar-range" size={14} />{__('Planner')}</Link>
+                        <Link href="/admin/schedule/auto" className={NAV_LINK}><Icon name="calendar-cog" size={14} />{__('Automatic scheduling')}</Link>
+                    </div>
+                </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="inline-flex rounded-om-sm border border-om-line overflow-hidden">
-                            <button type="button" onClick={() => setAxis('line')} className={`px-3 py-1 text-xs ${axis === 'line' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
-                                {__('Line')}
-                            </button>
-                            <button type="button" onClick={() => setAxis('crew')} className={`px-3 py-1 text-xs ${axis === 'crew' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
-                                {__('Crew')}
-                            </button>
-                        </div>
-                        <div className="inline-flex rounded-om-sm border border-om-line overflow-hidden">
-                            <button type="button" onClick={() => setGranularity('week')} className={`px-3 py-1 text-xs ${granularity === 'week' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
-                                {__('Weekly')}
-                            </button>
-                            <button type="button" onClick={() => setGranularity('day')} className={`px-3 py-1 text-xs ${granularity === 'day' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
-                                {__('Daily')}
-                            </button>
-                        </div>
-                        <button type="button" onClick={() => goTo(navPrev)} className="px-2 py-1 text-xs rounded-om-sm border border-om-line bg-om-panel">&larr;</button>
-                        <button type="button" onClick={() => goTo(navNext)} className="px-2 py-1 text-xs rounded-om-sm border border-om-line bg-om-panel">&rarr;</button>
+                <div className="flex flex-wrap items-center gap-3">
+                    <SegmentedControl
+                        label={__('Capacity axis')}
+                        className="w-full sm:w-[340px]"
+                        value={axis}
+                        onChange={setAxis}
+                        options={[
+                            { value: 'line', label: __('Line') },
+                            { value: 'crew', label: __('Crew') },
+                            { value: 'workstation', label: __('Workstation') },
+                        ]}
+                    />
+                    <SegmentedControl
+                        label={__('Granularity')}
+                        className="w-full sm:w-[220px]"
+                        value={granularity}
+                        onChange={setGranularity}
+                        options={[
+                            { value: 'week', label: __('Weekly') },
+                            { value: 'day', label: __('Daily') },
+                        ]}
+                    />
+                    <div className="flex items-center gap-1">
+                        <Button variant="outline" size="sm" className="p-2" onClick={() => goTo(navPrev)} aria-label={__('Previous')}><Icon name="chevron-left" size={16} /></Button>
+                        <Button variant="outline" size="sm" className="p-2" onClick={() => goTo(navNext)} aria-label={__('Next')}><Icon name="chevron-right" size={16} /></Button>
                     </div>
                 </div>
 
@@ -190,7 +201,7 @@ export default function Capacity() {
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-running inline-block" />{__('Under 80%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-500 inline-block" />{__('80–100%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-blocked inline-block" />{__('Over 100%')}</span>
-                    <span>{axis === 'line' ? __('Click a cell to see and reschedule its work orders.') : __('Crew planned hours are the labor demand of the lines each crew staffs.')}</span>
+                    <span>{axisHint}</span>
                 </div>
 
                 <div className="flex gap-4 items-start">
@@ -220,9 +231,17 @@ export default function Capacity() {
                                         <th className="sticky left-0 z-10 bg-om-panel text-left px-3 py-2 font-medium text-om-ink border-b border-om-line whitespace-nowrap">
                                             {r.name}
                                             {r.code ? <span className="text-om-muted font-normal"> · {r.code}</span> : null}
+                                            {r.planning_efficiency_pct != null && r.planning_efficiency_pct < 100 && (
+                                                <div
+                                                    className="text-[10px] font-normal text-om-muted"
+                                                    title={__('Load is measured against effective capacity: calendar capacity × planning efficiency.')}
+                                                >
+                                                    {__('Planning efficiency :pct%', { pct: r.planning_efficiency_pct })}
+                                                </div>
+                                            )}
                                         </th>
                                         {buckets.map((b) => {
-                                            const c = r.cells[b.key] ?? { available_h: 0, planned_h: 0, load_pct: null, unestimated_count: 0 };
+                                            const c = r.cells[b.key] ?? { calendar_h: 0, available_h: 0, planned_h: 0, load_pct: null, unestimated_count: 0 };
                                             const pct = c.load_pct;
                                             // No capacity but work is planned → a real over-capacity
                                             // problem; flag red rather than muting like an empty cell.
@@ -244,6 +263,11 @@ export default function Capacity() {
                                                         <div className={`h-full ${barClass}`} style={{ width: `${barPct}%` }} />
                                                     </div>
                                                     <div className="text-[10px] text-om-muted">{c.planned_h}h / {c.available_h}h</div>
+                                                    {c.calendar_h != null && c.calendar_h !== c.available_h && (
+                                                        <div className="text-[10px] text-om-muted" title={__('Calendar capacity before planning efficiency')}>
+                                                            {__('Calendar :hours h', { hours: c.calendar_h })}
+                                                        </div>
+                                                    )}
                                                     {c.unestimated_count > 0 && (
                                                         <div className="mt-0.5 text-[10px] text-om-accent" title={__('Work orders with no duration estimate')}>
                                                             {__(':count unestimated', { count: c.unestimated_count })}

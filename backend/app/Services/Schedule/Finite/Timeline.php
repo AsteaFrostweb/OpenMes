@@ -1,0 +1,165 @@
+<?php
+
+namespace App\Services\Schedule\Finite;
+
+/**
+ * What is already booked while a schedule is being built: busy intervals per
+ * resource, and operator demand per line.
+ *
+ * Resource keys are `ws:<id>` for a workstation and `line:<id>` for a line used
+ * as a whole. A line booked as a whole conflicts with every station on it and
+ * vice versa — the caller passes both keys when checking — which is the same
+ * rule the planner's line-level conflict detection already applies.
+ *
+ * Intervals are half-open [start, end) in epoch minutes.
+ */
+class Timeline
+{
+    /** @var array<string, list<array{start: int, end: int, attributes: array<string, mixed>, operation: ?OperationDemand, setup: int}>> */
+    private array $busy = [];
+
+    /** @var array<int, list<array{start: int, end: int, operators: int, skills: list<int>}>> */
+    private array $labor = [];
+
+    /**
+     * @param  array<string, mixed>  $attributes  changeover dimensions of what runs there
+     * @param  OperationDemand|null  $operation  the operation booked by this run (null for committed load)
+     * @param  int  $setup  setup minutes the booking reserved
+     */
+    public function book(string $key, int $start, int $end, array $attributes = [], ?OperationDemand $operation = null, int $setup = 0): void
+    {
+        if ($end <= $start) {
+            return;
+        }
+        $this->busy[$key][] = ['start' => $start, 'end' => $end, 'attributes' => $attributes, 'operation' => $operation, 'setup' => $setup];
+        usort($this->busy[$key], fn ($a, $b) => $a['start'] <=> $b['start']);
+    }
+
+    /**
+     * @param  list<int>  $skills
+     */
+    public function bookLabor(int $lineKey, int $start, int $end, int $operators, array $skills = []): void
+    {
+        if ($end <= $start) {
+            return;
+        }
+        $this->labor[$lineKey][] = ['start' => $start, 'end' => $end, 'operators' => $operators, 'skills' => $skills];
+    }
+
+    /**
+     * The latest end among bookings overlapping [start, end) on any of the
+     * keys — where the next attempt should start — or null when it is free.
+     *
+     * @param  list<string>  $keys
+     */
+    public function conflictEnd(array $keys, int $start, int $end): ?int
+    {
+        $latest = null;
+        foreach ($keys as $key) {
+            foreach ($this->busy[$key] ?? [] as $slot) {
+                if ($slot['start'] < $end && $slot['end'] > $start) {
+                    $latest = max($latest ?? $slot['end'], $slot['end']);
+                }
+            }
+        }
+
+        return $latest;
+    }
+
+    /**
+     * The first booking on the resource starting at or after $t — the job whose
+     * predecessor changes if something is inserted just before it.
+     *
+     * @return array{start: int, end: int, attributes: array<string, mixed>, operation: ?OperationDemand, setup: int}|null
+     */
+    public function nextBooking(string $key, int $t): ?array
+    {
+        foreach ($this->busy[$key] ?? [] as $slot) {
+            if ($slot['start'] >= $t) {
+                return $slot;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * What ran last on the resource before $t — for sequence-dependent setup.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function previousAttributes(string $key, int $t): ?array
+    {
+        $previous = null;
+        foreach ($this->busy[$key] ?? [] as $slot) {
+            if ($slot['end'] <= $t && ($previous === null || $slot['end'] >= $previous['end'])) {
+                $previous = $slot;
+            }
+        }
+
+        return $previous['attributes'] ?? null;
+    }
+
+    /**
+     * The most operators committed on a line at any one moment within
+     * [start, end) — the peak of concurrent demand, not the sum of every
+     * booking that touches the window: two jobs that run one after the other
+     * inside the window never need their crews at the same time. With skills
+     * given, only bookings needing one of them count — those are the people
+     * competing for the same qualification.
+     *
+     * @param  list<int>|null  $skills
+     */
+    public function laborInUse(int $lineKey, int $start, int $end, ?array $skills = null): int
+    {
+        $events = [];
+        foreach ($this->labor[$lineKey] ?? [] as $slot) {
+            if ($slot['start'] >= $end || $slot['end'] <= $start) {
+                continue;
+            }
+            if ($skills !== null && array_intersect($skills, $slot['skills']) === []) {
+                continue;
+            }
+            $events[] = [max($start, $slot['start']), $slot['operators']];
+            $events[] = [min($end, $slot['end']), -$slot['operators']];
+        }
+
+        // Releases sort before claims at the same minute: half-open intervals.
+        usort($events, fn ($a, $b) => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        $current = 0;
+        $peak = 0;
+        foreach ($events as [, $delta]) {
+            $current += $delta;
+            $peak = max($peak, $current);
+        }
+
+        return $peak;
+    }
+
+    /** The first booking end on the line after $t, to retry once people free up. */
+    public function nextLaborRelease(int $lineKey, int $t): ?int
+    {
+        $next = null;
+        foreach ($this->labor[$lineKey] ?? [] as $slot) {
+            if ($slot['end'] > $t) {
+                $next = min($next ?? $slot['end'], $slot['end']);
+            }
+        }
+
+        return $next;
+    }
+
+    /**
+     * Booked working-time footprint per resource key, for the load summary.
+     *
+     * @return array<string, list<array{start: int, end: int}>>
+     */
+    public function bookings(): array
+    {
+        return array_map(
+            fn ($slots) => array_map(fn ($s) => ['start' => $s['start'], 'end' => $s['end']], $slots),
+            $this->busy,
+        );
+    }
+}

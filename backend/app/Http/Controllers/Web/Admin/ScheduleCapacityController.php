@@ -23,7 +23,7 @@ class ScheduleCapacityController extends Controller
 {
     public function index(Request $request, CapacityService $capacity)
     {
-        $axis = in_array($request->query('axis'), ['line', 'crew'], true)
+        $axis = in_array($request->query('axis'), ['line', 'crew', 'workstation'], true)
             ? $request->query('axis')
             : 'line';
 
@@ -33,9 +33,11 @@ class ScheduleCapacityController extends Controller
 
         [$rangeStart, $rangeEnd, $navPrev, $navNext] = $this->resolveRange($request, $granularity);
 
-        $grid = $axis === 'crew'
-            ? $capacity->crewCapacity($rangeStart, $rangeEnd, $granularity)
-            : $capacity->lineCapacity($rangeStart, $rangeEnd, $granularity);
+        $grid = match ($axis) {
+            'crew' => $capacity->crewCapacity($rangeStart, $rangeEnd, $granularity),
+            'workstation' => $capacity->workstationCapacity($rangeStart, $rangeEnd, $granularity),
+            default => $capacity->lineCapacity($rangeStart, $rangeEnd, $granularity),
+        };
 
         return Inertia::render('admin/schedule/Capacity', [
             'grid' => $grid,

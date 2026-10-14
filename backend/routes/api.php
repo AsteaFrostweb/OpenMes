@@ -558,6 +558,15 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
         Route::get('/schedule/changes', [ScheduleController::class, 'changes']);
         Route::post('/schedule/changes/{change}/undo', [ScheduleController::class, 'undoChange']);
 
+        // Finite-capacity scheduling: committed operation plan (read
+        // contract for forecast/suggestion consumers) and the what-if workflow.
+        Route::get('/schedule/operations', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'operations']);
+        Route::put('/schedule/operations/{operation}', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'override']);
+        Route::post('/schedule/simulations', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'generate']);
+        Route::get('/schedule/simulations/{simulation}', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'show']);
+        Route::post('/schedule/simulations/{simulation}/apply', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'apply']);
+        Route::post('/schedule/simulations/{simulation}/discard', [\App\Http\Controllers\Api\V1\FiniteScheduleController::class, 'discard']);
+
         // Schedule planner write — minute-level move / resize for work orders.
         // Mirrors web Admin\SchedulePlannerController.updateOrder / resizeOrder.
         Route::put('/schedule/{workOrder}', [ScheduleController::class, 'updateOrder']);

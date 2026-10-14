@@ -78,6 +78,7 @@ class CollectionBroadcaster
             'product_revisions' => [Models\ProductRevision::class, null],
             'quality_control_triggers' => [Models\QualityControlTrigger::class, null],
             'downtime_reasons' => [Models\DowntimeReason::class, null],
+            'changeover_rules' => [Models\ChangeoverRule::class, null],
             'scrap_reasons' => [Models\ScrapReason::class, null],
             'webhooks' => [Models\Webhook::class, null],
             'webhook_deliveries' => [Models\WebhookDelivery::class, null],
