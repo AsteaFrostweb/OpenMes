@@ -40,6 +40,10 @@ class ShapeRegistry
             'table' => 'material_types',
             'columns' => ['id', 'code', 'name', 'created_at', 'updated_at'],
         ],
+        'changeover_rules' => [
+            'table' => 'changeover_rules',
+            'columns' => ['id', 'name', 'attribute', 'from_value', 'to_value', 'workstation_type_id', 'workstation_id', 'setup_minutes', 'is_active', 'created_at', 'updated_at'],
+        ],
         'downtime_reasons' => [
             'table' => 'downtime_reasons',
             'columns' => ['id', 'code', 'name', 'kind', 'is_active', 'created_at', 'updated_at'],
@@ -187,7 +191,7 @@ class ShapeRegistry
         // All lines (incl. inactive) for the admin list — lines_active is active-only.
         'lines_all' => [
             'table' => 'lines',
-            'columns' => ['id', 'code', 'name', 'description', 'is_active', 'area_id', 'division_id', 'warehouse_id', 'view_template_id', 'default_operator_view', 'custom_fields', 'created_at', 'updated_at'],
+            'columns' => ['id', 'code', 'name', 'description', 'is_active', 'area_id', 'division_id', 'warehouse_id', 'view_template_id', 'default_operator_view', 'planning_efficiency_pct', 'custom_fields', 'created_at', 'updated_at'],
         ],
         'maintenance_events' => [
             'table' => 'maintenance_events',

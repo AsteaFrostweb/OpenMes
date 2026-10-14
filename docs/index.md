@@ -43,6 +43,7 @@ Welcome to the OpenMES documentation. Choose a guide based on your role or use c
 | [API Documentation](API_DOCUMENTATION.md) | Full REST API reference with request/response examples |
 | [Module Hooks](../HOOKS.md) | Extend OpenMES with modules — event, menu and dashboard-widget hooks |
 | [Technical Documentation](development.md) | Architecture, modules system, development guide |
+| [Finite-capacity Scheduling](finite-capacity-scheduling.md) | Effective capacity, automatic scheduling constraints, what-if simulation, API |
 | [Machine Connectivity](machine-connectivity.md) | Signal pipeline, Modbus/OPC UA/MQTT, adding a new protocol |
 | [Warehouses & ERP Sync Rollout](warehouse-erp-rollout.md) | Deployment runbook for warehousing and the ERP master-data / stock sync |
 | [MQTT Connectivity](mqtt-connectivity.md) | MQTT setup and the listener daemon |

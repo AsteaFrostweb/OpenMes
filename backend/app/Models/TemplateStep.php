@@ -202,6 +202,21 @@ class TemplateStep extends Model
     }
 
     /**
+     * Skills an operator must hold to run this step. Steps have no skill list
+     * of their own; it comes from the linked Process Segment, and an unlinked
+     * step requires none — which leaves scheduling unconstrained by skills.
+     *
+     * @return list<int>
+     */
+    public function effectiveRequiredSkillIds(): array
+    {
+        return array_values(array_unique(array_map('intval', array_filter(
+            (array) ($this->processSegment?->required_skill_ids ?? []),
+            fn ($id) => is_numeric($id),
+        ))));
+    }
+
+    /**
      * Resolve the effective ISA-95 Equipment Class — the step's own value wins;
      * otherwise fall back to the linked Process Segment's workstation type (#52).
      */

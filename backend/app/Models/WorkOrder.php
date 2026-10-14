@@ -224,6 +224,30 @@ class WorkOrder extends Model
     }
 
     /**
+     * A digest of everything the finite scheduler reads from this order: its
+     * status, priority, deadline, placement, quantities, frozen routing and the
+     * state of its batch steps. A schedule generated from one digest is stale
+     * once it differs — detected regardless of how fast the change followed,
+     * where `updated_at` (whole seconds) would miss an edit in the same second.
+     */
+    public function schedulingFingerprint(): string
+    {
+        $steps = $this->relationLoaded('batches')
+            ? $this->batches->flatMap(fn ($batch) => $batch->relationLoaded('steps') ? $batch->steps : [])
+                ->map(fn ($step) => [$step->id, $step->status, $step->workstation_id, $step->started_at?->toIso8601String()])
+                ->sortBy(fn ($row) => $row[0])->values()->all()
+            : [];
+
+        return md5(json_encode([
+            $this->status, $this->priority, $this->priority_score,
+            $this->due_date?->toDateString(), $this->line_id,
+            $this->planned_start_at?->toIso8601String(), $this->planned_end_at?->toIso8601String(),
+            (string) $this->planned_qty, (string) $this->produced_qty,
+            $this->process_snapshot, $steps, $this->updated_at?->toIso8601String(),
+        ]));
+    }
+
+    /**
      * Determine whether this work order has minute-level planning timestamps
      * set on both ends. Used by the hourly schedule view to decide between
      * absolute time positioning and a legacy fallback (due_date-based block).
@@ -328,7 +352,7 @@ class WorkOrder extends Model
      * @param  array<int, array<string, mixed>>  $steps
      * @return array<string, int>
      */
-    private function selectedVariantSteps(array $steps): array
+    public function selectedVariantSteps(array $steps): array
     {
         $chosen = [];
         $explicit = [];

@@ -146,8 +146,13 @@ export default function Capacity() {
         router.reload({ only: ['grid'] });
     };
 
-    const resourceLabel = axis === 'crew' ? __('Crew') : __('Line');
-    const emptyText = axis === 'crew' ? __('No active crews.') : __('No active lines.');
+    const resourceLabel = { crew: __('Crew'), workstation: __('Workstation') }[axis] ?? __('Line');
+    const emptyText = { crew: __('No active crews.'), workstation: __('No active workstations.') }[axis] ?? __('No active lines.');
+    const axisHint = {
+        line: __('Click a cell to see and reschedule its work orders.'),
+        crew: __('Crew planned hours are the labor demand of the lines each crew staffs.'),
+        workstation: __('Workstation planned hours come from applied automatic schedules; work placed only by hand shows on the line axis.'),
+    }[axis];
 
     return (
         <AppLayout>
@@ -161,6 +166,9 @@ export default function Capacity() {
                         <Link href="/admin/schedule" className="text-xs text-om-accent hover:underline">
                             {__('Planner')} &rarr;
                         </Link>
+                        <Link href="/admin/schedule/auto" className="text-xs text-om-accent hover:underline">
+                            {__('Automatic scheduling')} &rarr;
+                        </Link>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -170,6 +178,9 @@ export default function Capacity() {
                             </button>
                             <button type="button" onClick={() => setAxis('crew')} className={`px-3 py-1 text-xs ${axis === 'crew' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
                                 {__('Crew')}
+                            </button>
+                            <button type="button" onClick={() => setAxis('workstation')} className={`px-3 py-1 text-xs ${axis === 'workstation' ? 'bg-om-ink text-om-on-ink' : 'bg-om-panel text-om-muted'}`}>
+                                {__('Workstation')}
                             </button>
                         </div>
                         <div className="inline-flex rounded-om-sm border border-om-line overflow-hidden">
@@ -190,7 +201,7 @@ export default function Capacity() {
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-running inline-block" />{__('Under 80%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-orange-500 inline-block" />{__('80–100%')}</span>
                     <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-om-blocked inline-block" />{__('Over 100%')}</span>
-                    <span>{axis === 'line' ? __('Click a cell to see and reschedule its work orders.') : __('Crew planned hours are the labor demand of the lines each crew staffs.')}</span>
+                    <span>{axisHint}</span>
                 </div>
 
                 <div className="flex gap-4 items-start">
@@ -220,9 +231,17 @@ export default function Capacity() {
                                         <th className="sticky left-0 z-10 bg-om-panel text-left px-3 py-2 font-medium text-om-ink border-b border-om-line whitespace-nowrap">
                                             {r.name}
                                             {r.code ? <span className="text-om-muted font-normal"> · {r.code}</span> : null}
+                                            {r.planning_efficiency_pct != null && r.planning_efficiency_pct < 100 && (
+                                                <div
+                                                    className="text-[10px] font-normal text-om-muted"
+                                                    title={__('Load is measured against effective capacity: calendar capacity × planning efficiency.')}
+                                                >
+                                                    {__('Planning efficiency :pct%', { pct: r.planning_efficiency_pct })}
+                                                </div>
+                                            )}
                                         </th>
                                         {buckets.map((b) => {
-                                            const c = r.cells[b.key] ?? { available_h: 0, planned_h: 0, load_pct: null, unestimated_count: 0 };
+                                            const c = r.cells[b.key] ?? { calendar_h: 0, available_h: 0, planned_h: 0, load_pct: null, unestimated_count: 0 };
                                             const pct = c.load_pct;
                                             // No capacity but work is planned → a real over-capacity
                                             // problem; flag red rather than muting like an empty cell.
@@ -244,6 +263,11 @@ export default function Capacity() {
                                                         <div className={`h-full ${barClass}`} style={{ width: `${barPct}%` }} />
                                                     </div>
                                                     <div className="text-[10px] text-om-muted">{c.planned_h}h / {c.available_h}h</div>
+                                                    {c.calendar_h != null && c.calendar_h !== c.available_h && (
+                                                        <div className="text-[10px] text-om-muted" title={__('Calendar capacity before planning efficiency')}>
+                                                            {__('Calendar :hours h', { hours: c.calendar_h })}
+                                                        </div>
+                                                    )}
                                                     {c.unestimated_count > 0 && (
                                                         <div className="mt-0.5 text-[10px] text-om-accent" title={__('Work orders with no duration estimate')}>
                                                             {__(':count unestimated', { count: c.unestimated_count })}

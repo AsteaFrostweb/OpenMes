@@ -26,6 +26,8 @@ class UpdateLineRequest extends FormRequest
             // is prohibited rather than unvalidated.
             'division_id' => ['sometimes', 'nullable', 'integer', \App\Models\Line::hasModuleRelation('division') ? 'exists:divisions,id' : 'prohibited'],
             'is_active' => ['sometimes', 'boolean'],
+            // Share of calendar capacity planning may load (100 = all of it).
+            'planning_efficiency_pct' => ['sometimes', 'required', 'numeric', 'min:1', 'max:100'],
         ];
     }
 }

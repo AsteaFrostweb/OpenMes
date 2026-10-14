@@ -38,6 +38,9 @@ class SnapshotService
                     'setup_time_minutes' => $step->setup_time_minutes,
                     'run_time_per_unit_minutes' => $step->run_time_per_unit_minutes,
                     'required_operators' => $step->effectiveRequiredOperators(),
+                    // Frozen like the rest of the routing, so a segment edited after
+                    // release cannot change who is qualified to run this order.
+                    'required_skill_ids' => $step->effectiveRequiredSkillIds(),
                     'workstation_id' => $step->workstation_id,
                     'workstation_type_id' => $step->effectiveWorkstationType(),
                     'parameters' => $step->effectiveParameters(),

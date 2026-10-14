@@ -2,11 +2,15 @@
 
 namespace App\Services\Schedule;
 
+use App\Enums\ScheduledOperationStatus;
 use App\Extension\Contracts\WorkforceProvider;
 use App\Models\Line;
 use App\Models\MaintenanceEvent;
+use App\Models\ScheduledOperation;
 use App\Models\Shift;
 use App\Models\WorkOrder;
+use App\Models\Workstation;
+use App\Services\Schedule\Finite\ResourceCalendar;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -15,11 +19,14 @@ use Illuminate\Support\Collection;
  * available (from its shift calendar) versus how many hours of work are
  * planned against it, per time bucket (day or week).
  *
- * The *line* axis ({@see lineCapacity()}) supplies machine capacity: available
+ * The *line* axis ({@see lineCapacity()}) supplies machine capacity: calendar
  * hours from active shifts (line-specific plus global) minus scheduled
- * maintenance, planned hours from active work orders (minute-plans distributed
- * across buckets, else a best-effort estimate lumped on the placement date;
- * unestimated orders counted separately rather than treated as zero load).
+ * maintenance, derated by the line's planning efficiency into the effective
+ * (available) hours that load is measured against; planned hours from active work orders (an order the
+ * finite scheduler placed counts by its committed operations, each on the line
+ * of its station; other minute-plans are distributed across buckets, else a
+ * best-effort estimate lumped on the placement date; unestimated orders are
+ * counted separately rather than treated as zero load).
  *
  * The *crew* axis ({@see crewCapacity()}) supplies labor capacity: available
  * hours from each crew's workers (their line's shifts minus approved absences
@@ -27,6 +34,11 @@ use Illuminate\Support\Collection;
  * lines the crew staffs (explicit crew↔line assignment, else derived from
  * worker → workstation → line), weighted by each order's required operators.
  * See {@see crewCapacity()} for the demand model.
+ *
+ * Every cell carries both figures: `calendar_h` (what the shift calendar
+ * offers) and `available_h` (what planning may load after the efficiency
+ * factor). With the default 100 % they are equal, so existing installations
+ * see exactly the numbers they always did.
  */
 class CapacityService
 {
@@ -50,6 +62,8 @@ class CapacityService
         $shiftIndex = $this->buildShiftIndex(Shift::where('is_active', true)->get());
 
         $workOrders = $this->activeWorkOrdersInRange($rangeStart, $rangeEnd);
+        $opsByOrder = $this->committedOperationsByOrder($workOrders);
+        $resourceCalendar = ResourceCalendar::forHorizon($rangeStart, $rangeEnd);
 
         $maintenance = MaintenanceEvent::whereIn('status', ['pending', 'in_progress'])
             ->whereNotNull('scheduled_at')
@@ -60,31 +74,32 @@ class CapacityService
 
         $resources = [];
         foreach ($lines as $line) {
-            // Every segment an order runs on this line consumes time here —
-            // the primary placement plus any extra segments, each on its dates.
-            $lineOrders = $workOrders->flatMap(fn ($wo) => $this->projectionsForLine($wo, $line->id));
             $lineMaint = $maintenance->where('line_id', $line->id);
+
+            $factor = $line->planningEfficiencyFactor();
 
             $cells = [];
             foreach ($buckets as $bucket) {
-                $available = $this->lineAvailableMinutes($shiftIndex, $line->id, $bucket, $rangeStart, $rangeEnd)
-                    - $this->maintenanceMinutes($lineMaint, $bucket);
+                $calendar = max(0, $this->lineAvailableMinutes($shiftIndex, $line->id, $bucket, $rangeStart, $rangeEnd)
+                    - $this->maintenanceMinutes($lineMaint, $bucket));
 
                 $cells[$bucket['key']] = [
-                    'available_minutes' => max(0, $available),
+                    'calendar_minutes' => $calendar,
+                    'available_minutes' => $calendar * $factor,
                     'planned_minutes' => 0,
                     'unestimated_count' => 0,
                 ];
             }
 
-            foreach ($lineOrders as $wo) {
-                $this->placeOrder($wo, $cells, $buckets);
+            foreach ($workOrders as $wo) {
+                $this->placeOrder($this->lineContributions($wo, $line->id, $buckets, $opsByOrder, $resourceCalendar, $factor), $cells);
             }
 
             $resources[] = [
                 'id' => $line->id,
                 'name' => $line->name,
                 'code' => $line->code,
+                'planning_efficiency_pct' => round($factor * 100, 2),
                 'cells' => $this->finalizeCells($cells),
             ];
         }
@@ -129,18 +144,28 @@ class CapacityService
 
         // Operator-weighted labor demand per line per bucket. Every segment an
         // order runs demands labor on its line, each on its own dates.
-        $ordersByLine = [];
-        foreach ($this->activeWorkOrdersInRange($rangeStart, $rangeEnd) as $wo) {
-            $lineIds = array_unique(array_filter([$wo->line_id, ...$wo->extraPlacements->pluck('line_id')->all()]));
+        // Each order's machine-minutes on a line × its duration-weighted
+        // operator count ({@see WorkOrder::operatorFactor()}) — the person-minutes
+        // the line's planned work needs. Kept as floats and rounded once at the
+        // hour-display step, so per-order rounding can't drift the bucket total.
+        $workOrders = $this->activeWorkOrdersInRange($rangeStart, $rangeEnd);
+        $opsByOrder = $this->committedOperationsByOrder($workOrders);
+        $resourceCalendar = ResourceCalendar::forHorizon($rangeStart, $rangeEnd);
+        $lineFactors = Line::all()->mapWithKeys(fn (Line $line) => [$line->id => $line->planningEfficiencyFactor()]);
+        $lineDemand = [];
+        foreach ($workOrders as $wo) {
+            $lineIds = array_unique(array_filter([
+                $wo->line_id,
+                ...$wo->extraPlacements->pluck('line_id')->all(),
+                ...$opsByOrder->get($wo->id, collect())->pluck('line_id')->all(),
+            ]));
+            $operators = $wo->operatorFactor();
             foreach ($lineIds as $lineId) {
-                foreach ($this->projectionsForLine($wo, $lineId) as $projection) {
-                    $ordersByLine[$lineId][] = $projection;
+                $contribution = $this->lineContributions($wo, (int) $lineId, $buckets, $opsByOrder, $resourceCalendar, $lineFactors[$lineId] ?? 1.0);
+                foreach ($contribution['minutes'] as $key => $minutes) {
+                    $lineDemand[$lineId][$key] = ($lineDemand[$lineId][$key] ?? 0.0) + $minutes * $operators;
                 }
             }
-        }
-        $lineDemand = [];
-        foreach ($ordersByLine as $lineId => $orders) {
-            $lineDemand[$lineId] = $this->lineLaborMinutes(collect($orders), $buckets);
         }
 
         // Lines each crew staffs (resolved once per crew) and how many crews
@@ -159,6 +184,7 @@ class CapacityService
 
         $resources = [];
         foreach ($crews as $crew) {
+            $factor = $this->crewEfficiencyFactor($crew);
             $cells = [];
             foreach ($buckets as $bucket) {
                 // Float through the split; round once when converting to hours.
@@ -168,8 +194,10 @@ class CapacityService
                     $planned += $lineMinutes / max(1, $crewsPerLine[$lineId] ?? 1);
                 }
 
+                $calendar = $this->crewAvailableMinutes($crew, $shiftIndex, $bucket, $rangeStart, $rangeEnd, $absentByDay);
                 $cells[$bucket['key']] = [
-                    'available_minutes' => $this->crewAvailableMinutes($crew, $shiftIndex, $bucket, $rangeStart, $rangeEnd, $absentByDay),
+                    'calendar_minutes' => $calendar,
+                    'available_minutes' => $calendar * $factor,
                     'planned_minutes' => $planned,
                     'unestimated_count' => 0,
                 ];
@@ -179,6 +207,7 @@ class CapacityService
                 'id' => $crew->id,
                 'name' => $crew->name,
                 'code' => $crew->code,
+                'planning_efficiency_pct' => round($factor * 100, 2),
                 'cells' => $this->finalizeCells($cells),
             ];
         }
@@ -195,7 +224,7 @@ class CapacityService
                     $minutes += $perBucket[$bucket['key']] ?? 0;
                 }
             }
-            $unassigned[$bucket['key']] = ['available_minutes' => 0, 'planned_minutes' => $minutes, 'unestimated_count' => 0];
+            $unassigned[$bucket['key']] = ['calendar_minutes' => 0, 'available_minutes' => 0, 'planned_minutes' => $minutes, 'unestimated_count' => 0];
             $hasUnassigned = $hasUnassigned || $minutes > 0;
         }
         if ($hasUnassigned) {
@@ -203,7 +232,88 @@ class CapacityService
                 'id' => 0,
                 'name' => __('Unassigned'),
                 'code' => null,
+                'planning_efficiency_pct' => 100.0,
                 'cells' => $this->finalizeCells($unassigned),
+            ];
+        }
+
+        return $this->grid($granularity, $buckets, $resources);
+    }
+
+    /**
+     * Build the workstation-axis grid from the committed operation plan.
+     *
+     * Available = the station's working time in the bucket (its line's shifts
+     * minus line and station maintenance, {@see ResourceCalendar}) × the line's
+     * planning efficiency. Planned = the scheduled operations committed on the
+     * station, as standard work: the working time they occupy × the same
+     * efficiency, since the scheduler stretched them by its inverse. Operations
+     * exist only for orders placed by the finite-capacity scheduler, so a
+     * station whose work was only ever placed by hand reads as idle here — the
+     * line axis is where that work shows.
+     *
+     * @return array{granularity: string, buckets: array<int, array>, resources: array<int, array>}
+     */
+    public function workstationCapacity(Carbon $rangeStart, Carbon $rangeEnd, string $granularity = 'week'): array
+    {
+        $granularity = in_array($granularity, ['day', 'week'], true) ? $granularity : 'week';
+
+        $rangeStart = $rangeStart->copy()->startOfDay();
+        $rangeEnd = $rangeEnd->copy()->endOfDay();
+        $buckets = $this->buildBuckets($rangeStart, $rangeEnd, $granularity);
+
+        $lines = Line::where('is_active', true)->get()->keyBy('id');
+        $stations = Workstation::with('line:id,name')
+            ->where('is_active', true)
+            ->whereIn('line_id', $lines->keys())
+            ->get()
+            ->sortBy(fn (Workstation $w) => [$w->line?->name, $w->name])
+            ->values();
+
+        $calendar = ResourceCalendar::forHorizon($rangeStart, $rangeEnd);
+        $operations = ScheduledOperation::committed()
+            ->whereIn('workstation_id', $stations->pluck('id'))
+            ->whereIn('status', [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value])
+            ->whereHas('workOrder', fn ($q) => $q->whereIn('status', WorkOrder::ACTIVE_STATUSES))
+            ->where('planned_start_at', '<', $rangeEnd)
+            ->where('planned_end_at', '>', $rangeStart)
+            ->get()
+            ->groupBy('workstation_id');
+
+        $resources = [];
+        foreach ($stations as $station) {
+            $factor = $lines->get($station->line_id)->planningEfficiencyFactor();
+            $windows = $calendar->windows((int) $station->line_id, $station->id);
+
+            $cells = [];
+            foreach ($buckets as $bucket) {
+                $from = ResourceCalendar::toMinutes($bucket['start']);
+                $to = ResourceCalendar::toMinutes($bucket['end']) + 1;
+                $calendarMinutes = ResourceCalendar::workingMinutesBetween($windows, $from, $to);
+
+                $occupied = 0;
+                foreach ($operations->get($station->id, collect()) as $op) {
+                    $occupied += ResourceCalendar::workingMinutesBetween(
+                        $windows,
+                        max($from, ResourceCalendar::toMinutes($op->planned_start_at)),
+                        min($to, ResourceCalendar::toMinutes($op->planned_end_at)),
+                    );
+                }
+
+                $cells[$bucket['key']] = [
+                    'calendar_minutes' => $calendarMinutes,
+                    'available_minutes' => $calendarMinutes * $factor,
+                    'planned_minutes' => $occupied * $factor,
+                    'unestimated_count' => 0,
+                ];
+            }
+
+            $resources[] = [
+                'id' => $station->id,
+                'name' => $station->name,
+                'code' => $station->line?->name,
+                'planning_efficiency_pct' => round($factor * 100, 2),
+                'cells' => $this->finalizeCells($cells),
             ];
         }
 
@@ -213,7 +323,7 @@ class CapacityService
     /**
      * Work orders contributing to a single line-axis cell (for the drill-down),
      * each with the hours it contributes to that bucket. Uses the same
-     * {@see orderContributions()} as the grid, so the listed orders always
+     * {@see lineContributions()} as the grid, so the listed orders always
      * reconcile with the cell total.
      *
      * @return array<int, array>
@@ -230,7 +340,8 @@ class CapacityService
             ->whereIn('status', WorkOrder::ACTIVE_STATUSES)
             ->where(function ($q) use ($lineId) {
                 $q->where('line_id', $lineId)
-                    ->orWhereHas('extraPlacements', fn ($q2) => $q2->where('line_id', $lineId));
+                    ->orWhereHas('extraPlacements', fn ($q2) => $q2->where('line_id', $lineId))
+                    ->orWhereIn('id', ScheduledOperation::committed()->where('line_id', $lineId)->select('work_order_id'));
             })
             ->where(function ($q) use ($bucket) {
                 $q->whereBetween('due_date', [$bucket['start'], $bucket['end']])
@@ -248,18 +359,18 @@ class CapacityService
             ->orderBy('due_date')
             ->get();
 
+        $opsByOrder = $this->committedOperationsByOrder($orders);
+        $calendar = ResourceCalendar::forHorizon($bucket['start'], $bucket['end']);
+        $factor = Line::find($lineId)?->planningEfficiencyFactor() ?? 1.0;
+
         $rows = [];
         foreach ($orders as $raw) {
-            // Sum every segment the order runs on this line within the bucket.
-            $minutes = 0;
-            $unestimated = false;
-            $wo = $raw;
-            foreach ($this->projectionsForLine($raw, $lineId) as $projection) {
-                $contribution = $this->orderContributions($projection, [$bucket]);
-                $minutes += $contribution['minutes'][$bucket['key']] ?? 0;
-                $unestimated = $unestimated || $contribution['unestimatedKey'] === $bucket['key'];
-                $wo = $projection;
-            }
+            // Every segment and operation the order runs on this line within the bucket.
+            $contribution = $this->lineContributions($raw, $lineId, [$bucket], $opsByOrder, $calendar, $factor);
+            $minutes = $contribution['minutes'][$bucket['key']] ?? 0;
+            $unestimated = in_array($bucket['key'], $contribution['unestimatedKeys'], true);
+            $projections = $this->projectionsForLine($raw, $lineId);
+            $wo = $projections === [] ? $raw : end($projections);
             if ($minutes <= 0 && ! $unestimated) {
                 continue;
             }
@@ -390,16 +501,90 @@ class CapacityService
     }
 
     /**
-     * Attribute a work order's planned machine-hours to the relevant bucket(s).
+     * Committed, placed operations of the given orders, grouped by order. An
+     * order that has any carries its load in these rows — each step on the line
+     * of the station that runs it — instead of in its overall time window, which
+     * after automatic scheduling also spans steps on other lines and the waits
+     * between them. This is the same rule the finite scheduler uses when it
+     * books existing work, so both screens agree on what a line carries.
+     *
+     * @return Collection<int, Collection<int, ScheduledOperation>>
      */
-    private function placeOrder(WorkOrder $wo, array &$cells, array $buckets): void
+    private function committedOperationsByOrder(Collection $orders): Collection
     {
-        $contribution = $this->orderContributions($wo, $buckets);
+        if ($orders->isEmpty()) {
+            return collect();
+        }
+
+        return ScheduledOperation::committed()
+            ->whereIn('work_order_id', $orders->pluck('id'))
+            ->whereIn('status', [ScheduledOperationStatus::Scheduled->value, ScheduledOperationStatus::ScheduledLate->value])
+            ->whereNotNull('planned_start_at')
+            ->whereNotNull('planned_end_at')
+            ->get()
+            ->groupBy('work_order_id');
+    }
+
+    /**
+     * A work order's planned minutes on one line, per bucket: its committed
+     * operations on that line as standard work (working time occupied × the
+     * line's efficiency, as on the workstation axis), else its placements on
+     * the line ({@see orderContributions()}). Extra segments are hand-placed
+     * and coarse, so they count either way.
+     *
+     * @return array{minutes: array<string, float|int>, unestimatedKeys: list<string>}
+     */
+    private function lineContributions(WorkOrder $wo, int $lineId, array $buckets, Collection $opsByOrder, ResourceCalendar $calendar, float $factor): array
+    {
+        $ops = $opsByOrder->get($wo->id);
+        $minutes = [];
+        $unestimatedKeys = [];
+
+        foreach ($this->projectionsForLine($wo, $lineId) as $projection) {
+            // Deliberately per order, not per line: once an order has committed
+            // operations its primary window counts nowhere, even on a line none
+            // of them runs on. Its load is wherever its operations are.
+            if ($ops !== null && $projection === $wo) {
+                continue;
+            }
+            $contribution = $this->orderContributions($projection, $buckets);
+            foreach ($contribution['minutes'] as $key => $m) {
+                $minutes[$key] = ($minutes[$key] ?? 0) + $m;
+            }
+            if ($contribution['unestimatedKey'] !== null) {
+                $unestimatedKeys[] = $contribution['unestimatedKey'];
+            }
+        }
+
+        foreach ($ops?->where('line_id', $lineId) ?? [] as $op) {
+            $windows = $calendar->windows($lineId, $op->workstation_id);
+            foreach ($buckets as $bucket) {
+                $worked = ResourceCalendar::workingMinutesBetween(
+                    $windows,
+                    max(ResourceCalendar::toMinutes($bucket['start']), ResourceCalendar::toMinutes($op->planned_start_at)),
+                    min(ResourceCalendar::toMinutes($bucket['end']) + 1, ResourceCalendar::toMinutes($op->planned_end_at)),
+                );
+                if ($worked > 0) {
+                    $minutes[$bucket['key']] = ($minutes[$bucket['key']] ?? 0) + $worked * $factor;
+                }
+            }
+        }
+
+        return ['minutes' => $minutes, 'unestimatedKeys' => $unestimatedKeys];
+    }
+
+    /**
+     * Add one order's contribution to a resource's cells.
+     *
+     * @param  array{minutes: array<string, float|int>, unestimatedKeys: list<string>}  $contribution
+     */
+    private function placeOrder(array $contribution, array &$cells): void
+    {
         foreach ($contribution['minutes'] as $key => $minutes) {
             $cells[$key]['planned_minutes'] += $minutes;
         }
-        if ($contribution['unestimatedKey'] !== null) {
-            $cells[$contribution['unestimatedKey']]['unestimated_count']++;
+        foreach ($contribution['unestimatedKeys'] as $key) {
+            $cells[$key]['unestimated_count']++;
         }
     }
 
@@ -431,32 +616,6 @@ class CapacityService
     }
 
     /**
-     * Operator-weighted labor minutes per bucket for a single line's orders:
-     * each order's machine-minutes in a bucket × its duration-weighted operator
-     * count ({@see WorkOrder::operatorFactor()}). This is the crew-axis demand —
-     * the person-minutes the line's planned work needs. With every step needing
-     * one operator it equals machine-minutes. Kept as floats and rounded once at
-     * the hour-display step, so per-order rounding can't drift the bucket total.
-     *
-     * @return array<string, float> bucket key => labor minutes
-     */
-    private function lineLaborMinutes(Collection $orders, array $buckets): array
-    {
-        $labor = [];
-        foreach ($buckets as $bucket) {
-            $labor[$bucket['key']] = 0.0;
-        }
-        foreach ($orders as $wo) {
-            $factor = $wo->operatorFactor();
-            foreach ($this->orderContributions($wo, $buckets)['minutes'] as $key => $minutes) {
-                $labor[$key] += $minutes * $factor;
-            }
-        }
-
-        return $labor;
-    }
-
-    /**
      * Distinct line IDs a crew staffs. Prefers the explicit crew↔line
      * assignment; falls back to the lines the crew's active workers are
      * stationed on when no explicit assignment exists.
@@ -478,14 +637,32 @@ class CapacityService
     }
 
     /**
+     * A crew's planning efficiency as a 0–1 factor.
+     *
+     * Crews live behind {@see WorkforceProvider}, so core cannot name a column
+     * on them; a provider that records a `planning_efficiency_pct` exposes it on
+     * the crew it returns. Absent or out of range reads as 100 %.
+     */
+    private function crewEfficiencyFactor(object $crew): float
+    {
+        $pct = (float) ($crew->planning_efficiency_pct ?? 100);
+
+        return $pct > 0 && $pct <= 100 ? $pct / 100 : 1.0;
+    }
+
+    /**
      * Convert raw minute tallies into the display shape (rounded hours +
      * integer load percentage; null percentage when there is no capacity).
+     *
+     * `available_*` is the effective capacity load is measured against;
+     * `calendar_*` is the undiminished shift-calendar figure beside it.
      */
     private function finalizeCells(array $cells): array
     {
         $out = [];
         foreach ($cells as $key => $cell) {
             $out[$key] = [
+                'calendar_h' => round(($cell['calendar_minutes'] ?? $cell['available_minutes']) / 60, 1),
                 'available_h' => round($cell['available_minutes'] / 60, 1),
                 'planned_h' => round($cell['planned_minutes'] / 60, 1),
                 'load_pct' => $cell['available_minutes'] > 0

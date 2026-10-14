@@ -503,6 +503,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/schedule/check-updates', [SchedulePlannerController::class, 'checkUpdates'])->name('schedule.check-updates');
         Route::get('/schedule/changes', [SchedulePlannerController::class, 'changes'])->name('schedule.changes');
         Route::post('/schedule/changes/{change}/undo', [SchedulePlannerController::class, 'undoChange'])->name('schedule.changes.undo');
+        // Finite-capacity scheduling: what-if simulation, apply/discard, overrides.
+        Route::get('/schedule/auto', [\App\Http\Controllers\Web\Admin\Schedule\AutoScheduleController::class, 'index'])->name('schedule.auto');
+        Route::post('/schedule/simulations', [\App\Http\Controllers\Web\Admin\Schedule\AutoScheduleController::class, 'generate'])->name('schedule.simulations.store');
+        Route::post('/schedule/simulations/{simulation}/apply', [\App\Http\Controllers\Web\Admin\Schedule\AutoScheduleController::class, 'apply'])->name('schedule.simulations.apply');
+        Route::post('/schedule/simulations/{simulation}/discard', [\App\Http\Controllers\Web\Admin\Schedule\AutoScheduleController::class, 'discard'])->name('schedule.simulations.discard');
+        Route::put('/schedule/operations/{operation}', [\App\Http\Controllers\Web\Admin\Schedule\AutoScheduleController::class, 'override'])->name('schedule.operations.override');
+        // Finite-capacity scheduling: sequence-dependent changeover rules.
+        Route::resource('schedule/changeover-rules', \App\Http\Controllers\Web\Admin\Schedule\ChangeoverRuleController::class)
+            ->except(['show'])
+            ->names('schedule.changeover-rules');
         Route::put('/schedule/{workOrder}', [SchedulePlannerController::class, 'updateOrder'])->name('schedule.update');
         Route::put('/schedule/{workOrder}/resize', [SchedulePlannerController::class, 'resizeOrder'])->name('schedule.resize');
         Route::post('/schedule/maintenance', [SchedulePlannerController::class, 'storeMaintenance'])->name('schedule.maintenance.store');
