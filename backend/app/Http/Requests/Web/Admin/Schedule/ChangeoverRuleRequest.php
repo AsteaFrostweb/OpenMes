@@ -24,11 +24,23 @@ class ChangeoverRuleRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge([
-            'is_active' => $this->boolean('is_active', true),
-            'from_value' => $this->filled('from_value') ? trim((string) $this->input('from_value')) : null,
-            'to_value' => $this->filled('to_value') ? trim((string) $this->input('to_value')) : null,
-        ]);
+        // Blank means "any value"; anything that is not a string is left for
+        // the `string` rule to reject rather than cast here.
+        $normalize = fn (mixed $value) => is_string($value) ? (trim($value) === '' ? null : trim($value)) : $value;
+        $input = [
+            'from_value' => $normalize($this->input('from_value')),
+            'to_value' => $normalize($this->input('to_value')),
+        ];
+
+        // A new rule is active unless said otherwise; an update that leaves
+        // the flag out keeps the rule's current state.
+        if ($this->has('is_active')) {
+            $input['is_active'] = $this->boolean('is_active');
+        } elseif ($this->isMethod('post')) {
+            $input['is_active'] = true;
+        }
+
+        $this->merge($input);
     }
 
     public function rules(): array
@@ -39,7 +51,7 @@ class ChangeoverRuleRequest extends FormRequest
             'from_value' => ['nullable', 'string', 'max:255'],
             'to_value' => ['nullable', 'string', 'max:255'],
             'workstation_type_id' => ['nullable', 'integer', Rule::exists('workstation_types', 'id')->whereNull('deleted_at')],
-            'workstation_id' => ['nullable', 'integer', Rule::exists('workstations', 'id')],
+            'workstation_id' => ['nullable', 'integer', Rule::exists('workstations', 'id')->whereNull('deleted_at')],
             'setup_minutes' => ['required', 'integer', 'min:0', 'max:10080'],
             'is_active' => ['boolean'],
         ];

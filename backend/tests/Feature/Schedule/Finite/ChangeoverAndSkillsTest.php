@@ -245,6 +245,32 @@ class ChangeoverAndSkillsTest extends TestCase
         $this->assertSame(0, ChangeoverRule::count());
     }
 
+    public function test_an_update_without_the_active_flag_keeps_the_rule_inactive(): void
+    {
+        $rule = ChangeoverRule::factory()->create(['is_active' => false]);
+
+        $this->actingAs($this->user('Admin'))
+            ->put("/admin/schedule/changeover-rules/{$rule->id}", ['name' => 'Renamed', 'attribute' => 'product_type', 'setup_minutes' => 12])
+            ->assertRedirect();
+
+        $this->assertFalse($rule->fresh()->is_active);
+    }
+
+    public function test_non_string_values_and_deleted_stations_are_rejected(): void
+    {
+        $station = $this->station($this->line());
+        $station->delete();
+
+        $this->actingAs($this->user('Admin'))
+            ->post('/admin/schedule/changeover-rules', [
+                'name' => 'x', 'attribute' => 'product_type', 'setup_minutes' => 5,
+                'from_value' => ['A'], 'workstation_id' => $station->id,
+            ])
+            ->assertSessionHasErrors(['from_value', 'workstation_id']);
+
+        $this->assertSame(0, ChangeoverRule::count());
+    }
+
     public function test_delete_is_soft(): void
     {
         $rule = ChangeoverRule::factory()->create();
