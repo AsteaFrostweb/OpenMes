@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { Button, Icon, InlineAlert } from '@openmes/ui';
+import { Button, Checkbox, Dropdown, Icon, InlineAlert } from '@openmes/ui';
 import AppLayout from '../../../layouts/AppLayout';
+import AppDateTimePicker from '../../../components/AppDateTimePicker';
 import useConfirm from '../../../components/useConfirm';
 import { __ } from '../../../lib/i18n';
 import { loadBarClass, loadPercClass } from '../../../lib/load';
@@ -98,16 +99,14 @@ function StationCell({ op, stationsByType, canDecide }) {
     return (
         <span className="inline-flex flex-col gap-0.5">
             <span className="inline-flex items-center gap-1">
-                <select
+                <Dropdown
+                    size="sm"
+                    className="min-w-[190px]"
+                    options={options.map((st) => ({ value: String(st.id), label: st.line_name ? `${st.name} · ${st.line_name}` : st.name }))}
                     value={value}
-                    onChange={(e) => save(e.target.value)}
+                    onChange={save}
                     aria-label={__('Workstation for :order step :step', { order: op.order_no, step: op.step_number })}
-                    className="text-xs border border-om-line rounded-om-sm px-1.5 py-0.5 bg-om-panel max-w-[180px]"
-                >
-                    {options.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name}{s.line_name ? ` · ${s.line_name}` : ''}</option>
-                    ))}
-                </select>
+                />
                 {source && <span className="text-om-muted text-[10px]">{source}</span>}
             </span>
             {error && <span role="alert" className="text-[11px] text-om-blocked">{error}</span>}
@@ -219,45 +218,62 @@ function GenerateForm({ defaults, canDecide }) {
         form.post('/admin/schedule/simulations', { preserveScroll: true });
     };
 
-    const field = 'block mt-0.5 text-xs border border-om-line rounded-om-sm px-2 py-1.5 bg-om-panel';
+    // Same field anatomy as ResourceForm, so this reads like every other form.
+    const label = 'block font-mono text-[9.5px] uppercase tracking-[0.08em] text-om-faint mb-[7px]';
+    const input = 'w-full bg-om-bg border border-om-line rounded-om-sm px-3 py-2.5 text-[13px] text-om-ink outline-none focus:border-om-accent focus:ring-[3px] focus:ring-[rgba(234,90,43,.12)]';
+    const error = (key) => form.errors[key] && <p className="mt-1 text-[11.5px] text-om-blocked">{form.errors[key]}</p>;
 
     return (
-        <form onSubmit={submit} className="border border-om-line rounded-om-sm bg-om-panel p-3 space-y-3">
+        <form onSubmit={submit} className="border border-om-line rounded-om-sm bg-om-panel p-4 space-y-4">
             <div className="text-sm font-bold text-om-ink">{__('Simulate a schedule')}</div>
-            <div className="flex flex-wrap items-end gap-3">
-                <label className="text-[11px] text-om-muted">
-                    {__('Start')}
-                    <input type="datetime-local" value={form.data.start} onChange={(e) => form.setData('start', e.target.value)} className={field} />
-                    {form.errors.start && <span className="block text-om-blocked">{form.errors.start}</span>}
-                </label>
-                <label className="text-[11px] text-om-muted">
-                    {__('Horizon (days)')}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(260px,1.2fr)_120px_minmax(240px,1fr)]">
+                <div>
+                    <div className={label}>{__('Start')}</div>
+                    <AppDateTimePicker value={form.data.start} onChange={(v) => form.setData('start', v)} aria-label={__('Start')} />
+                    {error('start')}
+                </div>
+                <div>
+                    <label htmlFor="auto-horizon" className={label}>{__('Horizon (days)')}</label>
                     <input
+                        id="auto-horizon"
                         type="number" min={1} max={defaults.max_horizon_days}
                         value={form.data.horizon_days}
                         onChange={(e) => form.setData('horizon_days', e.target.value)}
-                        className={`${field} w-24`}
+                        className={input}
                     />
-                    {form.errors.horizon_days && <span className="block text-om-blocked">{form.errors.horizon_days}</span>}
-                </label>
-                <label className="text-[11px] text-om-muted">
-                    {__('Orders to schedule')}
-                    <select value={form.data.scope} onChange={(e) => form.setData('scope', e.target.value)} className={field}>
-                        <option value="unplanned">{__('Only orders without a time plan')}</option>
-                        <option value="all">{__('Replan every order not yet started')}</option>
-                    </select>
-                </label>
-                <label className="text-[11px] text-om-ink inline-flex items-center gap-1.5 pb-1.5">
-                    <input type="checkbox" checked={!!form.data.respect_material} onChange={(e) => form.setData('respect_material', e.target.checked)} />
-                    {__('Hold orders that stock cannot cover')}
-                </label>
-                <label className="text-[11px] text-om-ink inline-flex items-center gap-1.5 pb-1.5">
-                    <input type="checkbox" checked={!!form.data.respect_workforce} onChange={(e) => form.setData('respect_workforce', e.target.checked)} />
-                    {__('Count available operators')}
-                </label>
-                <Button type="submit" size="sm" disabled={!canDecide || form.processing} leftIcon={<Icon name="calendar-cog" size={14} />}>
-                    {form.processing ? __('Calculating…') : __('Simulate')}
-                </Button>
+                    {error('horizon_days')}
+                </div>
+                <div>
+                    <div className={label}>{__('Orders to schedule')}</div>
+                    <Dropdown
+                        className="w-full"
+                        options={[
+                            { value: 'unplanned', label: __('Only orders without a time plan') },
+                            { value: 'all', label: __('Replan every order not yet started') },
+                        ]}
+                        value={form.data.scope}
+                        onChange={(v) => form.setData('scope', v)}
+                        aria-label={__('Orders to schedule')}
+                    />
+                    {error('scope')}
+                </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <Checkbox
+                    checked={!!form.data.respect_material}
+                    onChange={(v) => form.setData('respect_material', v)}
+                    label={__('Hold orders that stock cannot cover')}
+                />
+                <Checkbox
+                    checked={!!form.data.respect_workforce}
+                    onChange={(v) => form.setData('respect_workforce', v)}
+                    label={__('Count available operators')}
+                />
+                <div className="ml-auto">
+                    <Button type="submit" disabled={!canDecide || form.processing} leftIcon={<Icon name="calendar-cog" size={14} />}>
+                        {form.processing ? __('Calculating…') : __('Simulate')}
+                    </Button>
+                </div>
             </div>
             <p className="text-[11px] text-om-muted">
                 {__('Places each remaining step in the earliest slot that fits shifts, maintenance, planning efficiency, already planned work, step order, material, eligible workstations and operators. Nothing changes until you apply the result.')}
@@ -347,10 +363,7 @@ export default function AutoSchedule() {
                         <div className="px-3 pb-3">
                             <div className="flex items-center justify-between mb-1">
                                 <div className="text-xs font-semibold text-om-ink">{__('Operations')}</div>
-                                <label className="text-[11px] text-om-muted inline-flex items-center gap-1.5">
-                                    <input type="checkbox" checked={showOnlyProblems} onChange={(e) => setShowOnlyProblems(e.target.checked)} />
-                                    {__('Only late or infeasible')}
-                                </label>
+                                <Checkbox size="sm" checked={showOnlyProblems} onChange={setShowOnlyProblems} label={__('Only late or infeasible')} />
                             </div>
                             <div className="border border-om-line rounded-om-sm">
                                 <OperationsTable
